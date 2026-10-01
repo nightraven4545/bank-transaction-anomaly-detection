@@ -36,7 +36,7 @@ Mean ± standard deviation over 20 runs. Each run plants 27 synthetic frauds (~1
 - **Flag by review capacity, not by a probability cut-off.** "Probability > 0.75" would flag 13% of all transactions. The top 2% is about 50 transactions, which a team can actually review.
 
 ## Data
-[Bank Transaction Dataset for Fraud Detection](https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection) by Vala Khorasani: 2,512 transactions, 16 columns, released under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). The file in `data/` is unchanged.
+[Bank Transaction Dataset for Fraud Detection](https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection) by Vala Khorasani: 2,512 transactions, 16 columns, released under the [Apache License 2.0](data/LICENSE). The file in `data/` is unchanged.
 
 The notebook found three data-quality issues:
 - `PreviousTransactionDate` is later than the transaction on every row.
