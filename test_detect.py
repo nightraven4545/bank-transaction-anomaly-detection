@@ -1,9 +1,11 @@
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
+from sklearn.preprocessing import RobustScaler
 
-from detect import add_features, explain, flag, score
+from detect import FEATURES, add_features, explain, flag, score
 
 DATA = Path(__file__).parent / "data" / "bank_transactions_data_2.csv"
 
@@ -42,6 +44,19 @@ def test_scores_are_standardised_and_aligned(scored):
 def test_flag_matches_alert_rate(scored):
     _, scores = scored
     assert flag(scores["ensemble"], 0.05).sum() == round(0.05 * len(scores))
+
+
+def test_scores_match_pyod(scored):
+    pytest.importorskip("pyod")  # dev dependency: the app itself runs on scikit-learn only
+    from pyod.models.iforest import IForest
+    from pyod.models.knn import KNN
+    from pyod.models.lof import LOF
+
+    df, scores = scored
+    X = RobustScaler().fit_transform(df[FEATURES])
+    for name, detector in {"iforest": IForest(random_state=42), "knn": KNN(), "lof": LOF()}.items():
+        s = detector.fit(X).decision_scores_
+        assert np.allclose((s - s.mean()) / s.std(), scores[name]), name
 
 
 def test_explain_points_at_extreme_features(scored):

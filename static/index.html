@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transaction Anomaly Detector</title>
+<meta name="description" content="Upload bank transactions and get the most unusual ones ranked for review, with a reason for every alert.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1 15 14H1z' fill='%23d03b3b'/%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --border: rgba(11, 11, 11, .10);
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;
+    --accent: #2a78d6; --accent-ink: #ffffff;
+    --flag: #d03b3b; --normal: #b5b3ab; --danger-ink: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --border: rgba(255, 255, 255, .10);
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;
+      --accent: #3987e5; --accent-ink: #0b0b0b;
+      --flag: #d03b3b; --normal: #9a988f; --danger-ink: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 16px 48px; transition: opacity .2s; }
+  body.loading main > :not(header, .controls, #status) { opacity: .5; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 0; }
+  p { margin: 0; }
+  a { color: var(--accent); }
+  .sub { color: var(--ink-2); max-width: 70ch; }
+  .links { margin-top: 8px; font-size: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin: 24px 0 8px; }
+  button, .file-label { font: inherit; font-size: 14px; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .file-label { position: relative; background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  .file-label:focus-within, button:focus-visible, select:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .file-label input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .rate { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--ink-2); }
+  .rate input { accent-color: var(--accent); width: 160px; }
+  .rate output { color: var(--ink); font-weight: 600; min-width: 3.5ch; }
+  .hint { font-size: 13px; color: var(--muted); }
+  #status { min-height: 22px; font-size: 14px; color: var(--ink-2); }
+  #status.error { color: var(--danger-ink); font-weight: 600; }
+  #status.error::before { content: "⚠ "; }
+
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 8px 0 20px; }
+  .tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  .tile { padding: 14px 16px; }
+  .tile .label { font-size: 13px; color: var(--ink-2); }
+  .tile .value { font-size: 28px; font-weight: 600; line-height: 1.2; margin-top: 4px; }
+  .card { padding: 16px; margin-bottom: 20px; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+  .card-head .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--ink-2); }
+  select { font: inherit; font-size: 14px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+
+  .table-wrap { overflow: auto; max-height: 440px; border-top: 1px solid var(--grid); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--surface); color: var(--ink-2); font-weight: 600; font-size: 13px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.why { white-space: normal; min-width: 260px; color: var(--ink-2); }
+  td.score { font-weight: 600; }
+  .chart-box { position: relative; height: 400px; }
+
+  details { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details ul { margin: 10px 0 0; padding-left: 20px; color: var(--ink-2); }
+  footer { margin-top: 24px; font-size: 13px; color: var(--muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (max-width: 640px) {
+    main { padding-top: 20px; }
+    h1 { font-size: 23px; }
+    .tiles { grid-template-columns: 1fr; }
+    .tile .value { font-size: 24px; }
+    .chart-box { height: 320px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Bank transaction anomaly detector</h1>
+    <p class="sub">Ranks transactions by how unusual they are, using an ensemble of Isolation Forest, KNN and LOF, and explains every alert. Try the sample data or upload your own CSV.</p>
+    <p class="links">
+      <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection">Source on GitHub</a>
+      <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection/blob/main/notebook.ipynb">Analysis notebook</a>
+      <a href="#how">How it works</a>
+    </p>
+  </header>
+
+  <section class="controls" aria-label="Data and alert settings">
+    <label class="file-label">Upload CSV<input id="file" type="file" accept=".csv,text/csv"></label>
+    <button id="sample" type="button">Use sample data</button>
+    <label class="rate" for="rate">Alert rate
+      <input id="rate" type="range" min="0.5" max="10" step="0.5" value="2" aria-describedby="rate-help">
+      <output id="rate-out" for="rate">2%</output>
+    </label>
+    <span id="rate-help" class="hint">Share of transactions your team can review</span>
+  </section>
+  <p class="hint">CSV needs columns AccountID, TransactionAmount, TransactionDuration, LoginAttempts, AccountBalance (50 to 10,000 rows, max 4 MB).</p>
+  <p id="status" role="status" aria-live="polite"></p>
+
+  <section class="tiles" aria-label="Summary">
+    <div class="tile"><p class="label">Transactions scored</p><p class="value" id="kpi-total">–</p></div>
+    <div class="tile"><p class="label">Flagged for review</p><p class="value" id="kpi-flagged">–</p></div>
+    <div class="tile"><p class="label">Flagged amount</p><p class="value" id="kpi-amount">–</p></div>
+  </section>
+
+  <section class="card" aria-labelledby="alerts-title">
+    <div class="card-head">
+      <h2 id="alerts-title">Alerts, most suspicious first</h2>
+      <div class="actions">
+        <button id="dl-alerts" type="button">Download alerts</button>
+        <button id="dl-all" type="button">Download all scores</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <caption class="sr-only">Flagged transactions sorted by anomaly score, with the features that make each one unusual</caption>
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <p class="hint" style="margin-top:8px">Score = standard deviations above a typical transaction. pNN = percentile among all transactions (p100 = most extreme, p0 = lowest).</p>
+  </section>
+
+  <section class="card" aria-labelledby="chart-title">
+    <div class="card-head">
+      <h2 id="chart-title">Where the alerts sit</h2>
+      <div class="actions">
+        <label>X <select id="x-axis"></select></label>
+        <label>Y <select id="y-axis"></select></label>
+      </div>
+    </div>
+    <div class="chart-box">
+      <canvas id="chart" role="img" aria-label="Scatter plot of all transactions. Flagged transactions are red triangles, the rest are gray dots. The alerts table above lists the flagged ones."></canvas>
+    </div>
+  </section>
+
+  <details id="how">
+    <summary>How it works</summary>
+    <ul>
+      <li><strong>Features:</strong> amount, duration, login attempts, amount ÷ balance, and amount ÷ the account's usual amount. Age and occupation are deliberately left out.</li>
+      <li><strong>Detectors:</strong> Isolation Forest (easy to isolate), KNN (far from its neighbours) and LOF (sparser than its neighbourhood). Each score is standardised and the three are averaged.</li>
+      <li><strong>Alerts:</strong> the top <em>alert rate</em> share of transactions, sized to review capacity instead of a fixed probability cut-off.</li>
+      <li><strong>Privacy:</strong> uploaded files are scored in memory and never stored.</li>
+    </ul>
+  </details>
+
+  <footer>
+    Sample data: <a href="https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection">Bank Transaction Dataset for Fraud Detection</a> by Vala Khorasani (Apache-2.0).
+    Inspired by DataCamp's <em>Detecting Anomalous Transactions</em> project. Code under the MIT License.
+  </footer>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" integrity="sha512-WoViKhKD4qI2WruSZqv9+kvM4WfFhUMQCLN4QlDTt5aU56fLQy2gYoxWIqlEnXqJy/+Ac5q/hk1oWfqnMDhwMA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const LABELS = {
+  TransactionAmount: "Amount ($)", TransactionDuration: "Duration (s)", LoginAttempts: "Login attempts",
+  amount_to_balance: "Amount ÷ balance", amount_vs_account_median: "Amount vs account's usual",
+};
+const SHORT = {
+  TransactionAmount: "amount", TransactionDuration: "duration", LoginAttempts: "login attempts",
+  amount_to_balance: "amount ÷ balance", amount_vs_account_median: "amount vs usual",
+};
+const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+const moneyCompact = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+const count = new Intl.NumberFormat("en-US");
+const num = (v) => (v == null ? "" : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 }));
+const prettyReason = (s) => (s || "").replace(/(\w+) p(\d+)/g, (_, f, p) => `${SHORT[f] ?? f} p${p}`).replace(/, /g, " · ");
+
+// [key, header, format, numeric]. Optional columns are dropped when the data lacks them.
+const COLUMNS = [
+  ["ensemble", "Score", (v) => v.toFixed(1), true],
+  ["reason", "Why", prettyReason, false],
+  ["TransactionID", "Transaction", String, false],
+  ["AccountID", "Account", String, false],
+  ["TransactionAmount", "Amount", (v) => money.format(v), true],
+  ["TransactionDuration", "Duration (s)", num, true],
+  ["LoginAttempts", "Logins", num, true],
+  ["AccountBalance", "Balance", (v) => money.format(v), true],
+  ["Channel", "Channel", String, false],
+];
+
+const state = { rows: [], features: [] };
+let chart;
+
+function say(message, isError = false) {
+  $("status").textContent = message;
+  $("status").classList.toggle("error", isError);
+}
+
+async function load(request) {
+  document.body.classList.add("loading");
+  say("Scoring transactions…");
+  try {
+    const res = await request();
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `Request failed (${res.status})`);
+    state.features = body.features;
+    state.rows = body.data.map((row) => Object.fromEntries(body.columns.map((c, i) => [c, row[i]])));
+    state.rows.sort((a, b) => b.ensemble - a.ensemble); // stable: ties keep file order, like the API
+    fillAxisOptions();
+    say("");
+    render();
+  } catch (err) {
+    say(err.message, true);
+  } finally {
+    document.body.classList.remove("loading");
+  }
+}
+
+function fillAxisOptions() {
+  for (const [id, preferred] of [["x-axis", "TransactionAmount"], ["y-axis", "amount_to_balance"]]) {
+    const select = $(id);
+    const current = select.value || preferred;
+    select.replaceChildren(...state.features.map((f) => new Option(LABELS[f] ?? f, f)));
+    select.value = state.features.includes(current) ? current : state.features[0];
+  }
+}
+
+function render() {
+  $("rate-out").textContent = `${$("rate").value}%`;
+  const rows = state.rows;
+  if (!rows.length) return;
+  const k = Math.max(1, Math.round((Number($("rate").value) / 100) * rows.length));
+  const alerts = rows.slice(0, k);
+  $("kpi-total").textContent = count.format(rows.length);
+  $("kpi-flagged").textContent = count.format(k);
+  $("kpi-amount").textContent = moneyCompact.format(alerts.reduce((sum, r) => sum + r.TransactionAmount, 0));
+  renderTable(alerts);
+  renderChart(rows, k);
+}
+
+function renderTable(alerts) {
+  const columns = COLUMNS.filter(([key]) => key in alerts[0]);
+  $("thead").replaceChildren(...columns.map(([, header, , numeric]) => {
+    const th = document.createElement("th");
+    th.scope = "col";
+    th.textContent = header;
+    if (numeric) th.className = "num";
+    return th;
+  }));
+  // Uploaded values are untrusted: they only ever go in via textContent.
+  $("tbody").replaceChildren(...alerts.map((row) => {
+    const tr = document.createElement("tr");
+    for (const [key, , format, numeric] of columns) {
+      const td = tr.insertCell();
+      td.textContent = row[key] == null ? "" : format(row[key]);
+      td.className = key === "ensemble" ? "num score" : key === "reason" ? "why" : numeric ? "num" : "";
+    }
+    return tr;
+  }));
+}
+
+function renderChart(rows, k) {
+  if (!window.Chart) return; // CDN unavailable: the table still carries everything
+  const css = getComputedStyle(document.documentElement);
+  const token = (name) => css.getPropertyValue(name).trim();
+  const x = $("x-axis").value, y = $("y-axis").value;
+  const point = (row) => ({ x: row[x], y: row[y], row });
+  const axis = (key) => ({
+    title: { display: true, text: LABELS[key] ?? key, color: token("--ink-2") },
+    grid: { color: token("--grid") },
+    border: { color: token("--axis") },
+    ticks: { color: token("--muted") },
+  });
+  const config = {
+    type: "scatter",
+    data: {
+      datasets: [
+        { label: `Flagged (${count.format(k)})`, data: rows.slice(0, k).map(point), order: 0, pointStyle: "triangle",
+          radius: 7, hoverRadius: 9, backgroundColor: token("--flag"), borderColor: token("--surface"), borderWidth: 2 },
+        { label: "Normal", data: rows.slice(k).map(point), order: 1, pointStyle: "circle",
+          radius: 4, hoverRadius: 6, backgroundColor: token("--normal"), borderColor: token("--surface"), borderWidth: 1 },
+      ],
+    },
+    options: {
+      animation: false,
+      maintainAspectRatio: false,
+      parsing: false,
+      interaction: { mode: "nearest", intersect: false },
+      elements: { point: { hitRadius: 12 } },
+      scales: { x: axis(x), y: axis(y) },
+      plugins: {
+        legend: { position: "top", align: "start", labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: token("--ink-2") } },
+        tooltip: {
+          callbacks: {
+            title: (items) => `Score ${items[0].raw.row.ensemble.toFixed(1)}`,
+            label: (item) => {
+              const row = item.raw.row;
+              return [row.TransactionID ?? `Account ${row.AccountID}`, `${LABELS[x]}: ${num(row[x])}`, `${LABELS[y]}: ${num(row[y])}`];
+            },
+            footer: (items) => prettyReason(items[0].raw.row.reason),
+          },
+        },
+      },
+    },
+  };
+  if (chart) chart.destroy();
+  chart = new Chart($("chart"), config);
+}
+
+function download(filename, rows) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  const cell = (value) => {
+    if (value == null) return "";
+    let s = String(value);
+    if (typeof value === "string" && /^[=+\-@]/.test(s)) s = "'" + s; // keep spreadsheets from running it as a formula
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [keys.map(cell).join(","), ...rows.map((r) => keys.map((key) => cell(r[key])).join(","))].join("\n");
+  const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: filename });
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+$("sample").addEventListener("click", () => load(() => fetch("/api/sample")));
+$("file").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  event.target.value = ""; // allow re-uploading the same file
+  if (!file) return;
+  if (file.size > 4_000_000) return say("File too large: the limit is 4 MB.", true);
+  const form = new FormData();
+  form.append("file", file);
+  load(() => fetch("/api/score", { method: "POST", body: form }));
+});
+$("rate").addEventListener("input", render);
+$("x-axis").addEventListener("change", render);
+$("y-axis").addEventListener("change", render);
+$("dl-alerts").addEventListener("click", () => {
+  const k = Math.max(1, Math.round((Number($("rate").value) / 100) * state.rows.length));
+  download("alerts.csv", state.rows.slice(0, k));
+});
+$("dl-all").addEventListener("click", () => download("all_scores.csv", state.rows));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+
+load(() => fetch("/api/sample"));
+</script>
+</body>
+</html>

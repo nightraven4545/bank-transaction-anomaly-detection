@@ -6,14 +6,14 @@ Find the bank transactions most worth a fraud analyst's time with unsupervised a
 
 This is an extended version of DataCamp's guided project [*Detecting Anomalous Transactions*](https://www.datacamp.com/projects/2755).
 
-![Streamlit dashboard](images/app.png)
+![Web dashboard](images/app.png)
 
 ## Highlights
 - **DataCamp project reproduced:** Isolation Forest anomaly scores, then flags, a summary and a histogram ([notebook](notebook.ipynb), Part A).
 - **Evaluated without labels:** 27 synthetic frauds of three types are planted into the real data, and the test runs 20 times. The Isolation Forest reaches **ROC-AUC 0.977**, against 0.914 for an amount-only rule.
 - **Explainable alerts:** every alert names the two features that make it unusual, for example `amount_to_balance p100, LoginAttempts p96`.
-- **Interactive app:** upload a CSV, set how many alerts your team can review, and download the review queue.
-- **Tested:** pytest and ruff run on every push through GitHub Actions.
+- **Web app on Vercel:** a FastAPI backend and a one-page dashboard. Upload a CSV, set how many alerts your team can review, and download the review queue.
+- **Tested:** pytest (detection, API and a check that the scores match PyOD's) and ruff run on every push through GitHub Actions.
 
 ## Results
 
@@ -47,7 +47,7 @@ So the model uses behavioural features only: amount, duration, login attempts, a
 
 ## How it works (`detect.py`)
 1. **`add_features`** adds two context ratios: how big the amount is compared with the balance, and compared with the account's own median.
-2. **`score`** scales the features with `RobustScaler`, then runs Isolation Forest, KNN and LOF (PyOD). Each detector's training scores become z-scores, and the ensemble is their mean.
+2. **`score`** scales the features with `RobustScaler`, then runs Isolation Forest, KNN and LOF. It uses the scikit-learn estimators that PyOD wraps, so the scores are identical (a test checks this) without PyOD's heavy numba dependency. Each detector's training scores become z-scores, and the ensemble is their mean.
 3. **`flag`** marks the top *N*% by score, sized to review capacity.
 4. **`explain`** produces reason codes: the two features with the most extreme percentiles.
 
@@ -59,21 +59,37 @@ git clone https://github.com/nightraven4545/bank-transaction-anomaly-detection.g
 cd bank-transaction-anomaly-detection
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run app.py               # dashboard
-pip install jupyter pytest ruff
-jupyter lab notebook.ipynb         # analysis
+pip install -r requirements-dev.txt
+uvicorn app:app --reload           # dashboard at http://127.0.0.1:8000
 pytest -q                          # tests
+pip install jupyter
+jupyter lab notebook.ipynb         # analysis
+```
+
+`requirements.txt` holds only what the web app needs, which keeps the Vercel function small. The notebook and test tools are in `requirements-dev.txt`.
+
+## API
+| endpoint | returns |
+|---|---|
+| `GET /api/sample` | scores for the bundled dataset |
+| `POST /api/score` (multipart field `file`, CSV) | scores for your own transactions: 50 to 10,000 rows, at most 4 MB |
+
+Both return `{features, columns, data}`, with one row per transaction including `ensemble` (the anomaly z-score) and `reason`. Uploads are validated (required columns, numeric values, size and row limits) and never stored.
+
+```bash
+curl -F "file=@data/bank_transactions_data_2.csv" http://127.0.0.1:8000/api/score
 ```
 
 ## Project structure
 ```
-├── notebook.ipynb    analysis: DataCamp steps (Part A), extensions and evaluation (Part B)
-├── detect.py         features, detectors, alerting, reason codes (shared)
-├── app.py            Streamlit dashboard
-├── test_detect.py    pytest suite
-├── data/             Kaggle dataset (Apache-2.0)
-└── images/           figures used in this README
+├── notebook.ipynb      analysis: DataCamp steps (Part A), extensions and evaluation (Part B)
+├── detect.py           features, detectors, alerting, reason codes (shared)
+├── app.py              FastAPI backend: scoring API, serves the dashboard (Vercel entrypoint)
+├── static/index.html   dashboard: upload, alert-rate slider, alerts table, scatter chart
+├── test_detect.py      detection tests, including the PyOD equivalence check
+├── test_app.py         API tests: sample, uploads, rejected files
+├── data/               Kaggle dataset (Apache-2.0)
+└── images/             figures used in this README
 ```
 
 ## Limitations
@@ -85,7 +101,7 @@ pytest -q                          # tests
 - A time-series view: daily volumes checked with MAD or seasonal decomposition.
 - SHAP-based explanations instead of percentile reason codes.
 - A benchmark on a labelled dataset, such as the ULB credit-card fraud data.
-- A scoring API with FastAPI and Docker.
+- Save analysts' verdicts on alerts as labels, so a supervised model can be trained later.
 
 ## Credits
 - Project idea: DataCamp, *Detecting Anomalous Transactions* (Mike Preble), and the *Anomaly Detection in Python* course.

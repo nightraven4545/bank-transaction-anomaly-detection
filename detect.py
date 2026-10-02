@@ -1,12 +1,11 @@
 """Anomaly detection for bank transactions: features, scores, alerts, reason codes.
 
-Shared by notebook.ipynb, app.py and test_detect.py.
+Shared by notebook.ipynb, app.py and the tests.
 """
 
 import pandas as pd
-from pyod.models.iforest import IForest
-from pyod.models.knn import KNN
-from pyod.models.lof import LOF
+from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
 from sklearn.preprocessing import RobustScaler
 
 REQUIRED = ["AccountID", "TransactionAmount", "TransactionDuration", "LoginAttempts", "AccountBalance"]
@@ -35,13 +34,18 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 def score(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
     """Anomaly z-scores from Isolation Forest, KNN and LOF, plus their mean ('ensemble').
 
+    Same estimators and defaults that PyOD's IForest/KNN/LOF wrap (test_detect.py checks the
+    scores match), minus PyOD's heavy numba dependency so the app stays small on Vercel.
     z = how many standard deviations above the average transaction a score sits.
     """
     X = RobustScaler().fit_transform(df[FEATURES])
-    detectors = {"iforest": IForest(random_state=seed), "knn": KNN(), "lof": LOF()}
-    # decision_scores_ (training scores), not decision_function(X): re-scoring the training
-    # data makes KNN/LOF count each point as its own neighbour, which biases scores downward.
-    raw = {name: det.fit(X).decision_scores_ for name, det in detectors.items()}
+    # Training-set scores throughout: re-scoring the training data as "new" points would make
+    # KNN/LOF count each point as its own neighbour and bias the scores downward.
+    raw = {
+        "iforest": -IsolationForest(random_state=seed).fit(X).score_samples(X),
+        "knn": NearestNeighbors(n_neighbors=5).fit(X).kneighbors()[0][:, -1],  # 5th neighbour, self excluded
+        "lof": -LocalOutlierFactor(n_neighbors=20).fit(X).negative_outlier_factor_,
+    }
     out = pd.DataFrame({name: (s - s.mean()) / s.std() for name, s in raw.items()}, index=df.index)
     # Average z-scores, not outlier probabilities: probabilities saturate near 1 and flatten
     # the top of the ranking (notebook section 8 measures the difference).
