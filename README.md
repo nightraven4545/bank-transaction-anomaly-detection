@@ -1,6 +1,9 @@
 # Bank Transaction Anomaly Detection
 
 [![CI](https://github.com/nightraven4545/bank-transaction-anomaly-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/nightraven4545/bank-transaction-anomaly-detection/actions/workflows/ci.yml)
+[![Live demo on Vercel](https://img.shields.io/badge/live%20demo-Vercel-black?logo=vercel)](https://bank-transaction-anomaly-detection.vercel.app)
+
+**Live demo: [bank-transaction-anomaly-detection.vercel.app](https://bank-transaction-anomaly-detection.vercel.app)**. Try the sample data or upload your own CSV.
 
 Find the bank transactions most worth a fraud analyst's time with unsupervised anomaly detection (Isolation Forest, KNN, LOF), attach a reason to every alert, and **measure** how well it works even though the data has no fraud labels.
 
@@ -12,7 +15,7 @@ This is an extended version of DataCamp's guided project [*Detecting Anomalous T
 - **DataCamp project reproduced:** Isolation Forest anomaly scores, then flags, a summary and a histogram ([notebook](notebook.ipynb), Part A).
 - **Evaluated without labels:** 27 synthetic frauds of three types are planted into the real data, and the test runs 20 times. The Isolation Forest reaches **ROC-AUC 0.977**, against 0.914 for an amount-only rule.
 - **Explainable alerts:** every alert names the two features that make it unusual, for example `amount_to_balance p100, LoginAttempts p96`.
-- **Web app on Vercel:** a FastAPI backend and a one-page dashboard. Upload a CSV, set how many alerts your team can review, and download the review queue.
+- **[Web app on Vercel](https://bank-transaction-anomaly-detection.vercel.app):** a FastAPI backend and a one-page dashboard. Upload a CSV, set how many alerts your team can review, and download the review queue.
 - **Tested:** pytest (detection, API and a check that the scores match PyOD's) and ruff run on every push through GitHub Actions.
 
 ## Results
