@@ -92,7 +92,7 @@
   @media (max-width: 639px) { .kpi { flex-basis: 140px; } .kpi.reason { display: none; } .kpi-value { font-size: 24px; } }
 
   /* queue view */
-  #timeline { height: 214px; }
+  #timeline { height: 228px; }
   @media (max-width: 639px) { #timeline-panel { display: none; } }
   .work { display: grid; gap: 0 16px; align-items: start; }
   @media (min-width: 1024px) { .work { grid-template-columns: minmax(0, 1fr) clamp(400px, 36vw, 600px); } }
@@ -916,7 +916,7 @@ function drawTimeline(v) {
       return tipBox(bucketLabel(i), [cap(current.noun), int.format(all[i])], ["Alerts", int.format(hits[i])], ["Alert rate", all[i] ? pct(hits[i] / all[i], 1) : "–"]);
     } },
     axisPointer: { link: [{ xAxisIndex: "all" }] },
-    grid: [{ left: 48, right: 12, top: 18, height: 82 }, { left: 48, right: 12, top: 112, height: 42 }],
+    grid: [{ left: 48, right: 12, top: 18, height: 80 }, { left: 48, right: 12, top: 126, height: 40 }],
     xAxis: [0, 1].map((g) => ({ type: "category", gridIndex: g, data: b.keys, axisLine: { show: g === 1 }, axisLabel: { show: g === 1, formatter: shortLabel } })),
     yAxis: [
       { type: "value", gridIndex: 0, minInterval: 1, splitNumber: 2, name: current.noun, nameGap: 6, nameTextStyle: { align: "left" } },
