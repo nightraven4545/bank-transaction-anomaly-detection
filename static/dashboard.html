@@ -1,0 +1,1402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review desk · Transaction Anomaly Detector</title>
+<meta name="description" content="Review desk for unusual payments: a capacity-sized alert queue with a reason for every case, linked charts, and a review-cost calculator.">
+<meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1018" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='1' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='9' y='1' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='1' y='9' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='9' y='9' width='6' height='6' fill='%23d03b3b'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  /* top bar */
+  .topbar { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 4px var(--g); background: color-mix(in srgb, var(--page) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--hairline); }
+  .crumb { font: 600 12px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .crumb::before { content: "/"; margin-right: 12px; color: var(--axis); }
+  .tabs { display: flex; gap: 2px; margin-right: auto; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 14px 10px 10px; min-height: 44px; color: var(--ink-2); font: 600 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected=true] { color: var(--ink); border-bottom-color: var(--flag); }
+  .seg { display: flex; gap: 2px; margin: 0; padding: 2px; border: 1px solid var(--context); border-radius: 8px; background: var(--surface); min-width: 0; max-width: 100%; overflow: auto hidden; }
+  .seg label { position: relative; flex: none; }
+  .seg input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .seg span { display: flex; align-items: center; min-height: 36px; padding: 6px 12px; border-radius: 6px; font-size: 14px; font-weight: 600; color: var(--ink-2); white-space: nowrap; }
+  .seg input:checked + span { background: var(--ink); color: var(--page); }
+  .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .seg-x { flex: none; min-width: 36px; border: 0; background: none; color: var(--ink-2); cursor: pointer; border-radius: 6px; }
+  .seg-x:hover { background: var(--surface-2); }
+  .top-actions { display: flex; gap: 8px; }
+  @media (pointer: coarse) { .seg span { min-height: 44px; } }
+  @media (max-width: 479px) { .brand > span:last-child { display: none; } }
+  @media (max-width: 899px) {
+    .topbar { position: static; }
+    .crumb { display: none; }
+    .top-actions { order: 1; margin-left: auto; }
+    .seg { order: 2; width: 100%; }
+    .tabs { order: 3; width: 100%; margin: 0; }
+    .tabs button { flex: 1; }
+  }
+
+  /* controls */
+  .desk-main { padding: 12px var(--g) 64px; }
+  .banner { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 10px 14px; margin-bottom: 8px; border: 1px solid var(--flag); border-radius: 8px; background: var(--surface); color: var(--flag-ink); font-weight: 600; }
+  .hint { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 8px 8px 8px 14px; margin-bottom: 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--hairline)); font-size: 15px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: end; }
+  .filters { flex: 1 1 620px; min-width: 0; }
+  .filters summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .filters summary::before { content: "▸"; color: var(--ink-2); }
+  .filters[open] summary::before { content: "▾"; }
+  @media (min-width: 900px) { .filters summary { display: none; } }
+  .filter-row { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: end; }
+  .filter-row select { max-width: 230px; }
+  .filter-row input[type=search] { width: 190px; }
+  .presets { display: flex; border: 1px solid var(--context); border-radius: 6px; overflow: hidden; }
+  .presets button { min-height: 40px; padding: 6px 10px; border: 0; border-right: 1px solid var(--hairline); background: var(--surface); color: var(--ink-2); font: 500 13px/1 var(--sans); cursor: pointer; }
+  .presets button:last-child { border-right: 0; }
+  .presets button[aria-pressed=true] { background: var(--ink); color: var(--page); }
+  .dates { display: flex; flex-wrap: wrap; gap: 10px 8px; align-items: end; }
+  .capacity { display: grid; gap: 2px; flex: 0 1 300px; min-width: 220px; font-size: 13px; color: var(--ink-2); }
+  .capacity output { font: 600 15px/1.2 var(--mono); color: var(--ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chips:empty { display: none; }
+  .chip { min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--axis); background: var(--surface); color: var(--ink); font: 500 13px/1.2 var(--sans); cursor: pointer; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+  .chip:hover { border-color: var(--ink-2); }
+  #status { margin-top: 8px; font-size: 14px; color: var(--ink-2); }
+  #status:empty { display: none; }
+  body[data-tab=model] .controls, body[data-tab=model] .chips, body[data-tab=model] .kpis, body[data-tab=model] #hint { display: none; }
+
+  /* KPI tiles */
+  .kpis { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .kpi { flex: 1 1 190px; min-width: 0; display: grid; gap: 4px; align-content: start; padding: 12px 16px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; color: var(--ink); font: inherit; text-align: left; }
+  button.kpi { cursor: pointer; }
+  button.kpi:hover { border-color: var(--axis); }
+  .kpi-label { font: 600 11.5px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+  .kpi-value { font: 650 28px/1.1 var(--sans); font-stretch: 80%; overflow-wrap: anywhere; }
+  .kpi-sub { font-size: 13px; color: var(--muted); }
+  .kpi .linkish { font-size: 13px; font-weight: 500; }
+  .spark { display: block; width: 100%; height: 28px; overflow: visible; }
+  .spark polyline { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .meter { display: block; height: 6px; margin: 11px 0; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .meter > span { display: block; height: 100%; background: var(--flag); }
+  .meter.accent > span { background: var(--accent); }
+  .minis { display: grid; gap: 4px; }
+  .mini { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; font-size: 12.5px; color: var(--muted); }
+  .mini > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mini i { grid-column: 1 / -1; display: block; height: 3px; border-radius: 2px; background: var(--context); }
+  .mini.top { color: var(--ink); }
+  .mini.top i { background: var(--ink); }
+  @media (max-width: 639px) { .kpi { flex-basis: 140px; } .kpi.reason { display: none; } .kpi-value { font-size: 24px; } }
+
+  /* queue view */
+  #timeline { height: 214px; }
+  @media (max-width: 639px) { #timeline-panel { display: none; } }
+  .work { display: grid; gap: 0 16px; align-items: start; }
+  @media (min-width: 1024px) { .work { grid-template-columns: minmax(0, 1fr) clamp(400px, 36vw, 600px); } }
+  .queue-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .status { display: flex; flex-wrap: wrap; gap: 4px; }
+  .status button { min-height: 36px; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink-2); font: 500 13px/1 var(--sans); cursor: pointer; }
+  .status button span { font-family: var(--mono); margin-left: 4px; }
+  .status button[aria-pressed=true] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  @media (pointer: coarse) { .status button { min-height: 44px; } }
+  .queue td { padding: 9px 10px; }
+  @media (min-width: 640px) { .queue .tag { white-space: nowrap; } }
+  .queue tbody tr { cursor: pointer; }
+  .queue tbody tr:hover td { background: var(--surface-2); }
+  .queue tr[aria-current=true] td { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .queue tr[aria-current=true] td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+  .glyph { width: 30px; text-align: center; color: var(--muted); }
+  .glyph.e { color: var(--flag-ink); }
+  .glyph.f { color: var(--ink); }
+  .scorebar { display: inline-block; width: 44px; height: 6px; margin-right: 8px; vertical-align: middle; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+  .scorebar > span { display: block; height: 100%; background: var(--ink-2); }
+  .sub { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .why-sm { display: none; }
+  @media (max-width: 639px) { .hide-sm { display: none; } .why-sm { display: block; margin-top: 6px; } }
+  .queue-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .empty { padding: 28px 12px; text-align: center; cursor: default; }
+  .empty p { margin-bottom: 12px; color: var(--ink-2); }
+  .empty .btn { margin: 0 4px; }
+
+  /* case view (desktop panel and phone sheet) */
+  .case-panel { display: none; }
+  @media (min-width: 1024px) {
+    .case-panel { display: block; position: sticky; top: 72px; padding: 0; }
+    .case-scroll { max-height: calc(100dvh - 104px); overflow-y: auto; overscroll-behavior: contain; padding: 16px 20px 20px; }
+  }
+  .case-head { display: grid; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--hairline); }
+  .case-top { display: flex; gap: 12px; align-items: start; justify-content: space-between; }
+  .case-head h2 { font-size: 1.4rem; font-stretch: 85%; line-height: 1.15; overflow-wrap: anywhere; }
+  .case-nav { display: flex; gap: 6px; flex: none; }
+  .verdicts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .verdicts .stamp { margin-right: 4px; }
+  .verdicts .btn[aria-pressed=true].fine { background: var(--ink); color: var(--page); border-color: var(--ink); }
+  .verdicts .btn[aria-pressed=true].esc { background: var(--flag); color: #fff; border-color: var(--flag); }
+  .verdicts kbd { margin-left: 2px; color: var(--ink-2); }
+  .verdicts .btn[aria-pressed=true] kbd { background: transparent; color: inherit; border-color: currentColor; }
+  .case-body { padding-top: 12px; }
+  .case-body h3 { margin: 18px 0 6px; font-size: .95rem; }
+  .case-body > .btn { margin-top: 16px; }
+  .case-foot { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--hairline); font-size: 14px; color: var(--ink-2); }
+  dialog#case { border: 0; padding: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); width: min(560px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0 0 0 auto; border-radius: 12px 0 0 12px; overscroll-behavior: contain; }
+  @media (max-width: 767px) { dialog#case { width: 100vw; height: 92dvh; margin: auto 0 0; border-radius: 12px 12px 0 0; } }
+  dialog#case .case-head { position: sticky; top: 0; z-index: 1; background: var(--surface); padding: 16px 20px 12px; }
+  dialog#case .case-body { padding: 4px 20px 28px; }
+  dialog::backdrop { background: rgba(11, 16, 24, .5); }
+  dialog#upload { border: 0; border-radius: 12px; padding: 24px; width: min(540px, calc(100vw - 32px)); background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  dialog#upload h2 { font-size: 1.5rem; font-stretch: 85%; margin-bottom: 8px; }
+  dialog#upload p { margin-top: 10px; }
+  .upload-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; margin-top: 18px; }
+  .error { color: var(--flag-ink); font-weight: 600; }
+  .error:empty { display: none; }
+
+  /* patterns view */
+  .cards { display: grid; gap: 0 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); align-items: start; }
+  #calendar { height: 220px; }
+  #scatter { height: 340px; }
+
+  /* model view */
+  .model-grid { display: grid; gap: 0 16px; align-items: start; }
+  @media (min-width: 1100px) { .model-grid { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); } }
+  .takeaway { font-weight: 600; margin-bottom: 8px; max-width: 70ch; }
+  #ulb { height: 380px; }
+  #net { height: 240px; margin-top: 8px; }
+  .calc-inputs { display: flex; flex-wrap: wrap; gap: 12px; }
+  .calc-inputs input { width: 170px; }
+  .calc-result { font: 650 1.6rem/1.15 var(--sans); font-stretch: 80%; margin-top: 14px; }
+  .calc-detail { margin: 6px 0 10px; color: var(--ink-2); }
+  .metrics { font-size: 13.5px; }
+  .metrics th { white-space: nowrap; }
+  .metrics tr.used td { font-weight: 600; }
+  .dumbbell li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label val" "track track"; gap: 6px 12px; padding: 12px 0; border-bottom: 1px solid var(--hairline); }
+  @media (min-width: 640px) { .dumbbell li { grid-template-columns: 140px 1fr 170px; grid-template-areas: "label track val"; align-items: center; } }
+  .dumbbell .track { background: none; height: 14px; }
+  .dumbbell .track::before { left: 0; width: 100%; top: 6px; height: 2px; bottom: auto; background: var(--hairline); }
+  .dumbbell .link { position: absolute; top: 6px; height: 2px; background: var(--axis); left: min(var(--r), var(--m)); width: calc(max(var(--r), var(--m)) - min(var(--r), var(--m))); }
+  .dumbbell .dot { left: var(--r); background: var(--surface); border: 2px solid var(--context); }
+  .dumbbell .dot.m { left: var(--m); background: var(--model); border: 0; }
+  .scale { display: flex; justify-content: space-between; font: 12px/1 var(--mono); color: var(--muted); margin-top: 8px; }
+  @media (min-width: 640px) { .scale { margin-left: 152px; margin-right: 182px; } }
+  .steps { counter-reset: step; }
+  .steps > li { counter-increment: step; display: grid; gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--hairline); }
+  .steps h3 { font-size: 1rem; }
+  .steps h3::before { content: counter(step); display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 8px; border-radius: 50%; border: 1.5px solid var(--ink); font: 600 12px/1 var(--mono); vertical-align: 1px; }
+  .steps p { color: var(--ink-2); font-size: 14.5px; }
+  .formula { font: 600 14px/1.6 var(--mono); color: var(--ink) !important; }
+  .badge { font: 600 11px/1 var(--mono); padding: 3px 5px; border-radius: 4px; border: 1px solid currentColor; color: var(--ink-2); white-space: nowrap; }
+  .badge.real { color: var(--model); }
+  .limits { display: grid; gap: 16px 32px; }
+  @media (min-width: 700px) { .limits { grid-template-columns: 1fr 1fr; } }
+  .limits h3 { font-size: 1rem; margin-bottom: 4px; }
+  .limits li, .findings li { padding: 7px 0; border-bottom: 1px solid var(--hairline); color: var(--ink-2); font-size: 14.5px; }
+  .findings li strong { color: var(--ink); }
+  details.more { margin-top: 12px; }
+  .desk-foot { margin-top: 32px; font-size: 14px; color: var(--ink-2); }
+  /* Windows high contrast drops background colours, so mark the chosen state with the system highlight */
+  @media (forced-colors: active) {
+    .seg input:checked + span, .presets button[aria-pressed=true], .status button[aria-pressed=true], .verdicts .btn[aria-pressed=true] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+    .queue tr[aria-current=true] td:first-child { border-left: 4px solid Highlight; }
+  }
+</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" integrity="sha512-Uyq/AgtqFM4vT+unIGTDr4wMJDTUK9O5w2PXMQeBCSR8koqHpVz+qBmcQ+9Oeo5H+EmvT4pp/5QrsqhIbyjHTQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script defer src="app.js"></script>
+</head>
+<body data-tab="queue">
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="Anomaly detector home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Anomaly detector</span></a>
+  <span class="crumb">Review desk</span>
+  <div class="tabs" role="tablist" aria-label="Views" id="tablist">
+    <button role="tab" id="tab-queue" aria-controls="view-queue" aria-selected="true" type="button">Queue</button>
+    <button role="tab" id="tab-patterns" aria-controls="view-patterns" aria-selected="false" tabindex="-1" type="button">Patterns</button>
+    <button role="tab" id="tab-model" aria-controls="view-model" aria-selected="false" tabindex="-1" type="button">Model</button>
+  </div>
+  <fieldset class="seg" id="datasets"></fieldset>
+  <div class="top-actions">
+    <button class="btn small" id="open-upload" type="button">Upload</button>
+    <button class="btn small" id="export" type="button">Export CSV</button>
+  </div>
+</header>
+
+<main id="main" class="desk-main">
+  <div class="banner" id="banner" role="alert" hidden></div>
+  <div class="hint" id="hint" hidden>
+    <p>Pick a case, read why it was flagged, then mark it: <kbd>F</kbd> looks fine, <kbd>E</kbd> escalate. <kbd>J</kbd> <kbd>K</kbd> move.</p>
+    <button class="btn small" id="hint-ok" type="button">Got it</button>
+  </div>
+
+  <div class="controls">
+    <details class="filters" id="filters" open>
+      <summary>Filters <span id="filter-count"></span></summary>
+      <div class="filter-row">
+        <div class="dates" id="dates">
+          <div class="field"><span>Dates</span>
+            <div class="presets" role="group" aria-label="Date range">
+              <button type="button" data-days="0">All</button><button type="button" data-days="90">Last 90 days</button><button type="button" data-days="30">Last 30 days</button>
+            </div>
+          </div>
+          <label class="field">From <input type="date" id="from"></label>
+          <label class="field">To <input type="date" id="to"></label>
+        </div>
+        <label class="field" id="d1-field"><span id="d1-label">Agency</span><select id="d1"></select></label>
+        <label class="field" id="d2-field"><span id="d2-label">Category</span><select id="d2"></select></label>
+        <label class="field">Search <input type="search" id="q" maxlength="100" placeholder="Merchant or ID" autocomplete="off"></label>
+      </div>
+    </details>
+    <label class="capacity" for="rate">Your team reviews <output id="rate-out" for="rate"></output>
+      <input id="rate" type="range" min="0" max="11" step="1" value="6">
+    </label>
+  </div>
+  <div class="chips" id="chips"></div>
+  <p id="status" role="status"></p>
+  <section class="kpis" id="kpis" aria-label="Summary of the payments in view"></section>
+
+  <div id="view-queue" role="tabpanel" aria-labelledby="tab-queue">
+    <section class="panel" id="timeline-panel" aria-labelledby="tl-title">
+      <h2 class="folder" id="tl-title">Payments and alerts per day</h2>
+      <p class="hint-line">Grey: everything. Red: sent for review. Drag the handles to pick dates, or click a bar.</p>
+      <div id="timeline" class="chart"></div>
+      <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="timeline-table"></table></div></details>
+    </section>
+    <div class="work">
+      <section class="panel" id="queue-region" aria-labelledby="queue-title">
+        <h2 class="folder" id="queue-title">Queue</h2>
+        <div class="queue-head">
+          <div class="status" id="status-seg" role="group" aria-label="Show">
+            <button type="button" data-status="all">All<span></span></button>
+            <button type="button" data-status="todo">To review<span></span></button>
+            <button type="button" data-status="f">Looks fine<span></span></button>
+            <button type="button" data-status="e">Escalated<span></span></button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="queue">
+            <caption class="sr-only">Alerts, most unusual first. Each payment opens its case.</caption>
+            <thead><tr><th scope="col"><span class="sr-only">Review state</span></th><th scope="col" class="num">#</th><th scope="col" class="num hide-sm">Score</th><th scope="col">Payment</th><th scope="col" class="num">Amount</th><th scope="col" class="hide-sm">Why it stands out</th></tr></thead>
+            <tbody id="queue"></tbody>
+          </table>
+        </div>
+        <div class="queue-foot">
+          <p><kbd>J</kbd> <kbd>K</kbd> move · <kbd>F</kbd> looks fine · <kbd>E</kbd> escalate. Score: standard deviations above a typical payment.</p>
+          <button class="btn small" id="more" type="button" hidden>Show all</button>
+        </div>
+      </section>
+      <aside class="panel case-panel" aria-labelledby="case-title"><h2 class="folder" id="case-folder">Case</h2><div class="case-scroll" id="case-panel"></div></aside>
+    </div>
+  </div>
+
+  <div id="view-patterns" role="tabpanel" aria-labelledby="tab-patterns" hidden>
+    <div class="cards">
+      <section class="panel" id="calendar-panel" aria-labelledby="cal-title">
+        <h2 class="folder" id="cal-title">Alerts by day</h2>
+        <p class="hint-line" id="cal-hint">Darker means more alerts that day. Click a cell to filter to it.</p>
+        <div id="calendar" class="chart"></div>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="calendar-table"></table></div></details>
+      </section>
+      <section class="panel" aria-labelledby="sc-title">
+        <h2 class="folder" id="sc-title">Are alerts just big payments?</h2>
+        <p class="hint-line">Red diamonds are in the queue. The vertical line is the review cut-off, the horizontal one is where an amount-only rule would cut. Click a dot to open it.</p>
+        <div id="scatter" class="chart"></div>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="quadrant"></table></div></details>
+      </section>
+      <section class="panel" id="rate0-panel" aria-labelledby="rate0-title">
+        <h2 class="folder" id="rate0-title">Alert rate</h2>
+        <p class="hint-line" id="rate0-hint"></p>
+        <div id="rate0" class="chart"></div>
+        <p class="small muted" id="rate0-note"></p>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="rate0-table"></table></div></details>
+      </section>
+      <section class="panel" id="rate1-panel" aria-labelledby="rate1-title">
+        <h2 class="folder" id="rate1-title">Alert rate</h2>
+        <p class="hint-line" id="rate1-hint"></p>
+        <div id="rate1" class="chart"></div>
+        <p class="small muted" id="rate1-note"></p>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="rate1-table"></table></div></details>
+      </section>
+      <section class="panel" aria-labelledby="cmp-title">
+        <h2 class="folder" id="cmp-title">Alerts vs the rest</h2>
+        <p class="hint-line">Where the typical alert and the typical other payment sit on each feature (percentile).</p>
+        <div class="key" aria-hidden="true"><span>everything else</span><span class="a">alerts</span></div>
+        <ul class="compare" id="compare"></ul>
+      </section>
+    </div>
+  </div>
+
+  <div id="view-model" role="tabpanel" aria-labelledby="tab-model" hidden>
+    <div class="model-grid">
+      <section class="panel" aria-labelledby="m1-title">
+        <h2 class="folder" id="m1-title">On real fraud: <span data-k="ulb.rows">284,807</span> card payments</h2>
+        <p class="takeaway" id="ulb-takeaway"></p>
+        <div id="ulb" class="chart"></div>
+        <p class="small muted">Card payments from September 2013, with <span data-k="ulb.frauds">492</span> frauds confirmed by the card company. The labels only grade the ranking; the detectors never see them.</p>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table class="metrics" id="ulb-table"></table><table id="ulb-curve-table"></table></div></details>
+      </section>
+      <section class="panel" aria-labelledby="m2-title">
+        <h2 class="folder" id="m2-title">How many should your team review?</h2>
+        <div class="calc-inputs">
+          <label class="field">Cost of one review <input type="number" id="cost" min="0" max="1000000000000" step="any" inputmode="decimal"></label>
+          <label class="field">Loss per missed fraud <input type="number" id="loss" min="0" max="1000000000000" step="any" inputmode="decimal"></label>
+        </div>
+        <p class="small muted" id="calc-note" style="margin-top:8px"></p>
+        <p class="calc-result" id="calc-result" aria-live="polite"></p>
+        <p class="calc-detail small" id="calc-detail"></p>
+        <button class="btn" id="calc-use" type="button" hidden></button>
+        <div id="net" class="chart"></div>
+        <p class="small muted" id="net-caption"></p>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="net-table"></table></div></details>
+        <p class="small muted" style="margin-top:8px">What-if: assumes this data has the card data's fraud rate and the model performs as it did there. DC and Czech have no fraud labels.</p>
+      </section>
+      <section class="panel" aria-labelledby="m3-title">
+        <h2 class="folder" id="m3-title">Planted frauds, by kind</h2>
+        <p class="takeaway" id="planted-takeaway"></p>
+        <p class="small muted"><span data-k="planted.planted_per_run">27</span> synthetic frauds planted into the demo data, <span data-k="planted.runs">20</span> runs. Share caught at a 2% review rate.</p>
+        <div class="key" aria-hidden="true" style="margin-top:10px"><span class="r">amount-only rule</span><span class="m">model (Isolation Forest)</span></div>
+        <ul class="dumbbell" id="dumbbell"></ul>
+        <div class="scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+        <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table class="metrics" id="planted-table"></table></div></details>
+      </section>
+      <section class="panel" aria-labelledby="m4-title">
+        <h2 class="folder" id="m4-title">How a payment becomes a case</h2>
+        <ol class="steps">
+          <li><h3>The payment arrives</h3><p>Date, agency, merchant, category, amount. No cardholder is named.</p><div id="step-row"></div></li>
+          <li><h3>Features put it in context</h3><p>Higher always means more unusual. The dot is this payment; the grey band is the middle half.</p><div id="step-features"></div></li>
+          <li><h3>Three detectors score it</h3><p>In standard deviations above a typical payment. #1 is the most unusual.</p><div id="step-detectors"></div></li>
+          <li><h3>One model sets the order</h3><p class="formula" id="step-choice"></p><p>Share of real frauds caught at 1%. LOF breaks on repeated identical payments and drags the average down, so Isolation Forest ranks the queue.</p></li>
+          <li><h3>Capacity sets the queue</h3><p id="step-capacity"></p></li>
+          <li><h3>A reason a person can check</h3><div id="step-reasons"></div></li>
+        </ol>
+      </section>
+      <section class="panel" aria-labelledby="m5-title">
+        <h2 class="folder" id="m5-title">Data</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col" class="num">Size</th><th scope="col">Licence</th></tr></thead>
+            <tbody>
+              <tr><td>Card fraud, ULB and Worldline</td><td><span class="badge real">real, labelled</span></td><td class="num"><span data-k="ulb.rows"></span> payments, <span data-k="ulb.frauds"></span> frauds</td><td><a href="https://www.openml.org/d/1597">ODbL</a>, never stored here</td></tr>
+              <tr><td>Washington DC purchase cards, <span data-k="notes.dc.start"></span> to <span data-k="notes.dc.end"></span></td><td><span class="badge real">real, unlabelled</span></td><td class="num"><span data-k="notes.dc.rows"></span> payments, <span data-k="notes.dc.agencies"></span> agencies</td><td><a href="https://opendata.dc.gov/datasets/DCGIS::purchase-card-transactions">CC BY 4.0</a></td></tr>
+              <tr><td>Czech bank ledger, PKDD'99 (1993 to 1998)</td><td><span class="badge real">real, anonymised</span></td><td class="num"><span data-k="notes.czech.withdrawals"></span> withdrawals, <span data-k="notes.czech.accounts"></span> accounts</td><td><a href="https://relational.fel.cvut.cz/dataset/Financial">cited</a>, no explicit licence</td></tr>
+              <tr><td>Bank transactions demo</td><td><span class="badge">synthetic</span></td><td class="num"><span data-k="notes.kaggle.rows"></span> transactions</td><td><a href="https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection">Apache-2.0</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="small muted" style="margin-top:10px">Bank secrecy and data-protection law (India's DPDP Act, the EU's GDPR, the US GLBA) keep customer payments private, so public data is old and anonymised, published by governments about their own spending, or synthetic. This project uses one of each and says which is which.</p>
+      </section>
+      <section class="panel" aria-labelledby="m6-title">
+        <h2 class="folder" id="m6-title">Limits</h2>
+        <div class="limits">
+          <div><h3>What the results don't show</h3><ul>
+            <li>The card data is from 2013 and hides its fields.</li>
+            <li>DC and Czech have no labels: an alert is unusual, not proven wrong.</li>
+            <li>Planted frauds encode our own idea of fraud.</li>
+            <li>Accounts with few payments have noisy baselines.</li>
+          </ul></div>
+          <div><h3>How it should be used</h3><ul>
+            <li>A flag is a reason to look, never a block.</li>
+            <li>No age, occupation or wealth inputs.</li>
+            <li>Uploads are scored in memory and never stored.</li>
+            <li>The queue is sized to the team, not to a threshold.</li>
+          </ul></div>
+        </div>
+        <details class="more">
+          <summary>What the demo data could not tell us</summary>
+          <ul class="findings">
+            <li id="finding-hours"></li>
+            <li id="finding-prev"></li>
+            <li id="finding-device"></li>
+            <li id="finding-capacity"></li>
+          </ul>
+        </details>
+      </section>
+    </div>
+    <p class="desk-foot">Built by <a href="https://github.com/nightraven4545">nightraven4545</a> · <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection">Source</a> · <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection/blob/main/notebook.ipynb">Analysis notebook</a> · Code under the MIT License.</p>
+  </div>
+</main>
+
+<dialog id="case" aria-labelledby="case-title"><div id="case-sheet"></div><p class="sr-only" id="sheet-announce" aria-live="polite"></p></dialog>
+
+<dialog id="upload" aria-labelledby="upload-title">
+  <h2 id="upload-title">Score your own file</h2>
+  <p>A bank statement exported as CSV (Date, Narration, Debit or Withdrawal, Balance), or a file with AccountID, TransactionAmount, TransactionDuration, LoginAttempts and AccountBalance.</p>
+  <p class="small muted">30 to 10,000 rows, up to 4 MB. Scored in memory and never stored.</p>
+  <p><label class="btn primary">Choose a CSV file<input id="file" type="file" accept=".csv,text/csv"></label></p>
+  <p id="upload-status" class="small" role="status"></p>
+  <p id="upload-error" class="error" role="alert"></p>
+  <div class="upload-actions">
+    <p class="small"><a download="statement_template.csv" href="data:text/csv;charset=utf-8,Date,Narration,Debit,Credit,Balance%0A">Statement template</a> · <a download="transactions_template.csv" href="data:text/csv;charset=utf-8,AccountID,TransactionAmount,TransactionDuration,LoginAttempts,AccountBalance%0A">Transactions template</a></p>
+    <form method="dialog"><button class="btn" type="submit">Close</button></form>
+  </div>
+</dialog>
+
+<p class="sr-only" id="announce" aria-live="polite"></p>
+
+<script type="module">
+const RATES = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4, 5, 7.5, 10]; // percent; includes every rate measured on the card data
+const TABS = ["queue", "patterns", "model"];
+const DIM = { Agency: ["Agency", "agencies"], Category: ["Category", "categories"], AccountID: ["Account", "accounts"],
+  Narration: ["Type", "types"], Channel: ["Channel", "channels"], Location: ["Location", "locations"], TransactionType: ["Type", "types"] };
+const UPLOAD_DIMS = ["AccountID", "Channel", "Location", "TransactionType", "Narration"];
+const DETECTORS = [
+  ["iforest", "Isolation Forest", "Easy to cut off from the rest with a few random splits. Sets the queue."],
+  ["knn", "KNN", "Far from its 5 nearest neighbours. Second opinion."],
+  ["lof", "LOF", "In a sparser spot than its neighbours. Second opinion."],
+];
+const VERDICT = { f: "Looks fine", e: "Escalated" };
+const DAY = /^\d{4}-\d\d-\d\d$/;
+const NS = "http://www.w3.org/2000/svg";
+const desk = matchMedia("(min-width: 1024px)");
+const state = { ri: 6, from: null, to: null, d1: null, d2: null, q: "", status: "all", tab: "queue", showAll: false, sel: null };
+const rateTop = [[], []];
+let current = null, report = null, marks = {}, saved = true, opener = null, switchId = 0, lastSig = null, sigTimer;
+
+const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const rateText = (r) => `${+r.toFixed(2)}%`; // r is in percent
+const queueSize = () => Math.max(1, Math.round((RATES[state.ri] / 100) * current.rows.length));
+const say = (message) => { $("status").textContent = message; };
+// A modal sheet makes the rest of the page inert, so speak from inside it while it is open.
+const announce = (message) => { $($("case").open ? "sheet-announce" : "announce").textContent = message; };
+let queued = false;
+const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; render(); }); } };
+
+// ---- dates and buckets --------------------------------------------------------
+const addDays = (day, n) => { const d = new Date(`${day}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const nextMonth = (day) => { const [y, m] = day.split("-").map(Number); return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`; };
+// Buckets for the timeline: days for short spans, weeks up to two years, months beyond. Keys are the bucket's first day.
+function bucketer(ds) {
+  const span = (Date.parse(ds.maxDay) - Date.parse(ds.minDay)) / 864e5;
+  const unit = span <= 120 ? "day" : span <= 731 ? "week" : "month";
+  const key = (day) => unit === "day" ? day : unit === "month" ? `${day.slice(0, 7)}-01`
+    : addDays(day, -((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7));
+  const keys = [];
+  for (let d = key(ds.minDay); d <= ds.maxDay; d = unit === "day" ? addDays(d, 1) : unit === "week" ? addDays(d, 7) : nextMonth(d)) keys.push(d);
+  return { unit, key, keys, index: new Map(keys.map((k, i) => [k, i])) };
+}
+const bucketEnd = (i) => { const b = current.bucket; return i + 1 < b.keys.length ? addDays(b.keys[i + 1], -1) : current.maxDay; };
+const bucketLabel = (i) => {
+  const b = current.bucket, k = b.keys[i];
+  return b.unit === "day" ? date(k) : b.unit === "week" ? `Week of ${date(k)}` : new Date(`${k}T12:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+};
+const shortLabel = (k) => new Date(`${k}T12:00:00`).toLocaleDateString("en-GB", current.bucket.unit === "month" ? { month: "short", year: "2-digit" } : { day: "numeric", month: "short" });
+function windowIdx() {
+  const b = current.bucket;
+  if (!b) return [0, 0];
+  return state.from ? [b.index.get(b.key(state.from)), b.index.get(b.key(state.to))] : [0, b.keys.length - 1];
+}
+function setDates(from, to) {
+  if (!from && !to) state.from = state.to = null;
+  else {
+    from = DAY.test(from ?? "") ? from : current.minDay;
+    to = DAY.test(to ?? "") ? to : current.maxDay;
+    if (from > to) [from, to] = [to, from];
+    if (from < current.minDay) from = current.minDay;
+    if (to > current.maxDay) to = current.maxDay;
+    const all = from > to || (from === current.minDay && to === current.maxDay);
+    state.from = all ? null : from;
+    state.to = all ? null : to;
+  }
+  state.showAll = false;
+  schedule();
+}
+
+// ---- the slice everything is drawn from ------------------------------------------
+// The review cut-off is global (top K of the whole dataset). Filters only narrow what is shown; they never re-rank.
+function view() {
+  const ds = current, K = queueSize(), [a, b] = ds.dims, q = state.q.trim().toLowerCase();
+  const pass = (r, skip) =>
+    (skip === "date" || !state.from || (r._day != null && r._day >= state.from && r._day <= state.to)) &&
+    (skip === "d1" || state.d1 == null || String(r[a]) === state.d1) &&
+    (skip === "d2" || state.d2 == null || String(r[b]) === state.d2) &&
+    (!q || (r._text ??= `${title(r)} ${sub(r)}`.toLowerCase()).includes(q));
+  const rows = ds.rows.filter((r) => pass(r));
+  const alerts = rows.filter((r) => r._rank.iforest <= K).sort((x, y) => x._rank.iforest - y._rank.iforest);
+  let series = null;
+  if (ds.bucket) {
+    const { key, keys, index } = ds.bucket, all = keys.map(() => 0), hits = keys.map(() => 0);
+    for (const r of ds.rows) {
+      if (!r._day || !pass(r, "date")) continue;
+      const i = index.get(key(r._day));
+      all[i]++;
+      if (r._rank.iforest <= K) hits[i]++;
+    }
+    series = { all, hits };
+  }
+  return { K, pass, rows, alerts, series };
+}
+const inStatus = (r) => state.status === "all" || (state.status === "todo" ? !marks[r._i] : marks[r._i] === state.status);
+
+function render() {
+  if (!current) return;
+  let focus = document.activeElement?.dataset?.focus;
+  if (focus?.startsWith("row-") && state.sel) focus = `row-${state.sel._i}`;
+  const v = view();
+  renderControls(v);
+  renderKpis(v);
+  if (state.tab === "queue") { renderQueue(v); drawTimeline(v); }
+  renderCase(v);
+  if (state.tab === "patterns") { drawCalendar(v); drawRates(v, 0); drawRates(v, 1); drawScatter(v); renderCompare(v); }
+  if (state.tab === "model") { drawUlb(); renderCalculator(); }
+  if (focus) { // the focused control was rebuilt: refocus its twin, or something close by if it is now hidden or disabled
+    const pick = (f) => document.querySelector(`[data-focus="${CSS.escape(f)}"]`), usable = (n) => n && !n.disabled && n.offsetParent !== null;
+    [pick(focus), focus.startsWith("chip") && $("q"), $("case").open && pick("v-f"), state.sel && pick(`row-${state.sel._i}`), $("queue").querySelector("button")].find(usable)?.focus();
+  }
+  // Tell screen-reader users what a filter change did, once they stop typing or dragging.
+  const sig = [current.key, state.ri, state.from, state.to, state.d1, state.d2, state.q, state.status].join("|");
+  if (lastSig !== null && sig !== lastSig) {
+    clearTimeout(sigTimer);
+    sigTimer = setTimeout(() => announce(`${int.format(v.alerts.filter(inStatus).length)} alerts in view.`), 700);
+  }
+  lastSig = sig;
+}
+
+// ---- controls -------------------------------------------------------------------
+function renderControls(v) {
+  const ds = current, r = RATES[state.ri];
+  $("rate").value = state.ri;
+  $("rate-out").textContent = `${rateText(r)} · ${int.format(v.K)} ${ds.noun}`;
+  $("rate").setAttribute("aria-valuetext", `${rateText(r)}, ${int.format(v.K)} ${ds.noun}`);
+  $("dates").hidden = !ds.minDay;
+  if (ds.minDay) {
+    for (const id of ["from", "to"]) { $(id).min = ds.minDay; $(id).max = ds.maxDay; }
+    $("from").value = state.from ?? "";
+    $("to").value = state.to ?? "";
+    document.querySelectorAll("[data-days]").forEach((b) => {
+      const n = Number(b.dataset.days);
+      b.setAttribute("aria-pressed", String(n ? state.from === addDays(ds.maxDay, 1 - n) && state.to === ds.maxDay : !state.from));
+    });
+  }
+  $("d1").value = state.d1 ?? "";
+  $("d2").value = state.d2 ?? "";
+  const chips = [];
+  if (state.from) chips.push([`${date(state.from)} to ${date(state.to)}`, () => { state.from = state.to = null; }]);
+  ds.dims.forEach((dim, j) => {
+    const value = state[`d${j + 1}`];
+    if (value != null) chips.push([`${DIM[dim]?.[0] ?? dim}: ${value}`, () => { state[`d${j + 1}`] = null; }]);
+  });
+  if (state.q.trim()) chips.push([`Search: ${state.q.trim()}`, () => { state.q = ""; $("q").value = ""; }]);
+  const buttons = chips.map(([label, clear], i) => {
+    const b = el("button", { className: "chip", type: "button", textContent: `✕ ${label}` });
+    b.setAttribute("aria-label", `Remove filter ${label}`);
+    b.dataset.focus = `chip-${i}`;
+    b.addEventListener("click", () => { clear(); state.showAll = false; render(); });
+    return b;
+  });
+  if (chips.length > 1) {
+    const all = el("button", { className: "linkish small", type: "button", textContent: "Clear all" });
+    all.dataset.focus = "chip-all";
+    all.addEventListener("click", clearFilters);
+    buttons.push(all);
+  }
+  $("chips").replaceChildren(...buttons);
+  $("filter-count").textContent = chips.length ? `(${chips.length})` : "";
+}
+function clearFilters() {
+  Object.assign(state, { from: null, to: null, d1: null, d2: null, q: "", showAll: false });
+  $("q").value = "";
+  render();
+}
+function buildDims() {
+  [0, 1].forEach((j) => {
+    const dim = current.dims[j], field = $(`d${j + 1}-field`);
+    field.hidden = !dim;
+    if (!dim) return;
+    const [name, plural] = DIM[dim] ?? [dim, dim];
+    $(`d${j + 1}-label`).textContent = name;
+    const values = [...new Set(current.rows.map((r) => String(r[dim])))].sort((x, y) => x.localeCompare(y, "en", { numeric: true }));
+    $(`d${j + 1}`).replaceChildren(new Option(`All ${plural}`, ""), ...values.map((x) => new Option(x, x)));
+  });
+}
+
+// ---- KPI tiles --------------------------------------------------------------------
+function spark(values, color) {
+  const svg = document.createElementNS(NS, "svg"), line = document.createElementNS(NS, "polyline");
+  const max = Math.max(1, ...values), last = Math.max(1, values.length - 1);
+  svg.setAttribute("viewBox", "0 0 100 28");
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  svg.classList.add("spark");
+  line.setAttribute("points", values.map((x, i) => `${(i / last) * 100},${26 - (x / max) * 24}`).join(" "));
+  line.style.stroke = `var(${color})`;
+  svg.append(line);
+  return svg;
+}
+function meter(share, cls = "") {
+  const fill = el("span");
+  fill.style.width = `${Math.min(100, Math.max(0, share * 100))}%`;
+  return el("span", { className: `meter ${cls}`, ariaHidden: "true" }, fill);
+}
+const tile = ({ label, value, visual, note, extra, button, cls = "" }) => {
+  const kids = [el("span", { className: "kpi-label", textContent: label }), el("span", { className: "kpi-value", textContent: value }), visual,
+    el("span", { className: "kpi-sub", textContent: note }), extra];
+  return button ? el("button", { className: `kpi ${cls}`, type: "button" }, ...kids) : el("div", { className: `kpi ${cls}` }, ...kids);
+};
+function renderKpis(v) {
+  const ds = current, n = v.rows.length, N = ds.rows.length, a = v.alerts.length, amount = (r) => r[ds.amountKey];
+  const spend = sum(v.rows.map(amount)), held = sum(v.alerts.map(amount));
+  const fine = v.alerts.filter((r) => marks[r._i] === "f").length, esc = v.alerts.filter((r) => marks[r._i] === "e").length;
+  const [lo, hi] = windowIdx();
+  const line = (key, color) => v.series ? spark(v.series[key].slice(lo, hi + 1), color) : el("span", { className: "kpi-sub", textContent: "No dates in this file." });
+  const counts = {};
+  v.alerts.forEach((r) => { const f = parseReasons(r.reason)[0]?.f; if (f) counts[f] = (counts[f] || 0) + 1; });
+  const top = Object.entries(counts).sort((x, y) => y[1] - x[1]).slice(0, 3);
+  const minis = el("span", { className: "minis", ariaHidden: "true" }, ...top.map(([f, c], i) => {
+    const bar = el("i");
+    bar.style.width = pct(c / a);
+    return el("span", { className: i ? "mini" : "mini top" }, el("span", { textContent: LABEL[f] ?? f }), el("span", { textContent: pct(c / a) }), bar);
+  }));
+  let clear = null;
+  if (fine + esc) {
+    clear = el("button", { className: "linkish", type: "button", textContent: "Clear my marks" });
+    clear.dataset.focus = "clear-marks";
+    clear.addEventListener("click", () => {
+      if (!confirm(`Clear every mark on the ${ds.name} data?`)) return;
+      for (const i of Object.keys(marks)) delete marks[i];
+      saveMarks();
+      render();
+    });
+  }
+  const alertsTile = tile({ label: "Alerts", value: int.format(a), visual: line("hits", "--flag"), button: true, cls: "alerts",
+    note: `${n ? pct(a / n, 1) : "0%"} here · ${pct(v.K / N, 1)} overall` });
+  alertsTile.dataset.focus = "kpi-alerts";
+  alertsTile.setAttribute("aria-label", `Alerts: ${int.format(a)}. Open the queue.`);
+  alertsTile.addEventListener("click", () => { showTab("queue"); $("queue").querySelector("button")?.focus(); });
+  $("kpis").replaceChildren(
+    tile({ label: cap(ds.noun), value: int.format(n), visual: line("all", "--context"),
+      note: n !== N ? `of ${int.format(N)}` : ds.minDay ? `${date(ds.minDay)} to ${date(ds.maxDay)}` : "" }),
+    alertsTile,
+    tile({ label: "Money in queue", value: money(held, ds.currency), visual: meter(spend ? held / spend : 0),
+      note: `${spend ? pct(held / spend) : "0%"} of the money in view${ds.currency ? "" : " · currency unknown"}` }),
+    tile({ label: "Reviewed", value: `${int.format(fine + esc)} / ${int.format(a)}`, visual: meter(a ? (fine + esc) / a : 0, "accent"),
+      note: `✓ ${fine} fine · ▲ ${esc} escalated${saved ? "" : " · not saved on this device"}`, extra: clear }),
+    tile({ label: "Top reason", value: top.length ? LABEL[top[0][0]] ?? top[0][0] : "–", visual: minis,
+      note: top.length ? `first reason on ${pct(top[0][1] / a)} of alerts` : "", cls: "reason" }));
+}
+
+// ---- queue --------------------------------------------------------------------------
+const reasonTag = ({ f, p }) => el("span", { className: p < 90 ? "tag weak" : "tag", textContent: `${LABEL[f] ?? f} · top ${Math.max(1, 100 - p)}%` });
+function queueRow(row, topScore) {
+  const ds = current, mark = marks[row._i] ?? "", reasons = parseReasons(row.reason);
+  const open = el("button", { className: "linkish", type: "button", textContent: title(row) });
+  open.dataset.focus = `row-${row._i}`;
+  open.setAttribute("aria-label", `Case ${row._rank.iforest}: ${title(row)}`);
+  open.addEventListener("click", () => select(row, open));
+  const bar = el("span");
+  bar.style.width = `${Math.max(4, Math.min(100, (row.iforest / topScore) * 100))}%`;
+  const tr = el("tr", {},
+    el("td", { className: `glyph ${mark}` }, el("span", { ariaHidden: "true", textContent: mark === "f" ? "✓" : mark === "e" ? "▲" : "◌" }),
+      el("span", { className: "sr-only", textContent: VERDICT[mark] ?? "To review" })),
+    el("td", { className: "num mono", textContent: int.format(row._rank.iforest) }),
+    el("td", { className: "num mono hide-sm" }, el("span", { className: "scorebar", ariaHidden: "true" }, bar), row.iforest.toFixed(1)),
+    el("td", {}, open, el("span", { className: "sub", textContent: sub(row) }), reasons[0] ? el("span", { className: "why-sm" }, reasonTag(reasons[0])) : null),
+    el("td", { className: "num mono", textContent: money(row[ds.amountKey], ds.currency) }),
+    el("td", { className: "hide-sm" }, ...reasons.map(reasonTag)));
+  if (state.sel === row) tr.setAttribute("aria-current", "true");
+  tr.addEventListener("click", (e) => { if (!e.target.closest("button")) open.click(); });
+  return tr;
+}
+function emptyRow(v) {
+  const td = el("td", { colSpan: 6, className: "empty" });
+  if (v.alerts.length) {
+    td.append(el("p", { textContent: state.status === "todo" ? "Every alert in view is reviewed." : `Nothing marked “${VERDICT[state.status]}” in view yet.` }));
+  } else {
+    td.append(el("p", { textContent: `No alerts here at ${rateText(RATES[state.ri])}.` }));
+    if (state.ri < RATES.indexOf(5)) {
+      const raise = el("button", { className: "btn small", type: "button", textContent: "Raise to 5%" });
+      raise.addEventListener("click", () => { state.ri = RATES.indexOf(5); render(); });
+      td.append(raise);
+    }
+    if (state.from || state.d1 != null || state.d2 != null || state.q.trim()) {
+      const clear = el("button", { className: "btn small", type: "button", textContent: "Clear filters" });
+      clear.addEventListener("click", clearFilters);
+      td.append(clear);
+    }
+  }
+  return el("tr", {}, td);
+}
+function renderQueue(v) {
+  const list = v.alerts.filter(inStatus), limit = state.showAll ? list.length : Math.min(50, list.length);
+  const counts = { all: v.alerts.length, todo: v.alerts.filter((r) => !marks[r._i]).length,
+    f: v.alerts.filter((r) => marks[r._i] === "f").length, e: v.alerts.filter((r) => marks[r._i] === "e").length };
+  document.querySelectorAll("#status-seg button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.status === state.status));
+    b.querySelector("span").textContent = int.format(counts[b.dataset.status]);
+  });
+  $("queue-title").textContent = `Queue · ${int.format(v.alerts.length)} alerts, most unusual first`;
+  const topScore = Math.max(0.1, ...list.slice(0, limit).map((r) => r.iforest));
+  $("queue").replaceChildren(...(list.length ? list.slice(0, limit).map((r) => queueRow(r, topScore)) : [emptyRow(v)]));
+  $("more").hidden = limit >= list.length;
+  $("more").textContent = `Show all ${int.format(list.length)}`;
+}
+
+// ---- case view -----------------------------------------------------------------------
+function shownValue(f, row, ds) {
+  const v = row[f];
+  if (f === "TransactionAmount" || f === "Debit") return money(v, ds.currency);
+  if (f.startsWith("amount_")) return times(v);
+  if (f === "category_rarity_in_agency" || f === "share_of_balance") return pct(v);
+  if (f === "TransactionDuration") return `${v} s`;
+  if (f === "days_since_prev") return `${v} days`;
+  return String(v);
+}
+function statement(row, ds) {
+  const parts = [row.TransactionDate, row.TransactionID, row.Agency, row.Vendor, row.Category, row.Narration,
+    row.AccountID != null && row.AccountID !== "statement" && !row.Agency ? `account ${row.AccountID}` : null, row.Channel,
+    money(row[ds.amountKey], ds.currency)];
+  return el("p", { className: "statement", textContent: parts.filter(Boolean).join("  ·  ") });
+}
+function strips(row, ds) {
+  return el("ul", { className: "strips" }, ...ds.features.map((f) => {
+    const p = row._pct[f], track = el("span", { className: "track", ariaHidden: "true" }, el("span", { className: "dot" }));
+    track.style.setProperty("--p", `${p}%`);
+    return el("li", {},
+      el("span", { className: "label", textContent: LABEL[f] ?? f }),
+      track,
+      el("span", { className: "val", textContent: shownValue(f, row, ds) }),
+      el("span", { className: "where small muted", textContent: p >= 50 ? `top ${Math.max(1, Math.round(100 - p))}%` : `bottom ${Math.max(1, Math.round(p))}%` }));
+  }));
+}
+function detectors(row, ds) {
+  const top = Math.max(4, ...DETECTORS.map(([k]) => row[k]));
+  return el("div", {},
+    el("ul", { className: "bars" }, ...DETECTORS.map(([k, name, idea]) => {
+      const bar = el("span", { className: k === "iforest" ? "bar model" : "bar" });
+      bar.style.width = `${(Math.max(0, row[k]) / top) * 100}%`;
+      return el("li", {},
+        el("span", { className: "label" }, el("strong", { textContent: name }), el("span", { className: "small muted", textContent: idea })),
+        el("span", { className: "track", ariaHidden: "true" }, bar),
+        el("span", { className: "val", textContent: `${row[k].toFixed(1)} · #${int.format(row._rank[k])}` }));
+    })),
+    el("p", { className: "small muted note", textContent: `An amount-only rule would rank it #${int.format(row._rank._rule)} of ${int.format(ds.rows.length)}.` }));
+}
+function caseView(row, v, sheet) {
+  const ds = current, list = v.alerts.filter(inStatus), i = list.indexOf(row), inQueue = row._rank.iforest <= v.K, mark = marks[row._i];
+  const nav = (label, d) => {
+    const b = el("button", { className: "btn small", type: "button", textContent: label, disabled: i < 0 ? d < 0 || !list.length : !list[i + d] });
+    b.setAttribute("aria-label", d < 0 ? "Previous case" : "Next case");
+    b.dataset.focus = d < 0 ? "prev" : "next";
+    b.addEventListener("click", () => step(d));
+    return b;
+  };
+  const verdict = (x, label, key) => {
+    const b = el("button", { className: `btn small ${x === "f" ? "fine" : "esc"}`, type: "button" }, label, el("kbd", { textContent: key, ariaHidden: "true" }));
+    b.setAttribute("aria-pressed", String(mark === x));
+    b.dataset.focus = `v-${x}`;
+    b.addEventListener("click", () => setMark(row, x));
+    return b;
+  };
+  let close = null;
+  if (sheet) {
+    close = el("button", { className: "btn small", type: "button", textContent: "Close" });
+    close.addEventListener("click", () => $("case").close());
+  }
+  const [cls, text] = !inQueue ? ["out", "Not in queue"] : mark === "f" ? ["cleared", "✓ Cleared"] : mark === "e" ? ["escalated", "▲ Escalated"] : ["", "In queue"];
+  const head = el("div", { className: "case-head" },
+    el("div", { className: "case-top" },
+      el("div", {}, el("p", { className: "kpi-label", textContent: `Case ${int.format(row._rank.iforest)} of ${int.format(ds.rows.length)} · score ${row.iforest.toFixed(1)}` }),
+        el("h2", { id: "case-title", textContent: title(row) })),
+      el("div", { className: "case-nav" }, nav("‹", -1), nav("›", 1), close)),
+    el("p", { className: "small muted", textContent: sub(row) }),
+    el("div", { className: "verdicts" }, el("span", { className: `stamp ${cls}`, textContent: text }),
+      inQueue ? verdict("f", "✓ Looks fine", "F") : null, inQueue ? verdict("e", "▲ Escalate", "E") : null));
+  const dim = ds.dims[0];
+  let only = null;
+  if (dim && row[dim] != null) {
+    only = el("button", { className: "btn small", type: "button", textContent: `Show only this ${DIM[dim][0].toLowerCase()}` });
+    only.dataset.focus = "only";
+    only.addEventListener("click", () => { state.d1 = String(row[dim]); state.showAll = false; if (sheet) $("case").close(); render(); });
+  }
+  const body = el("div", { className: "case-body" }, statement(row, ds),
+    el("h3", { textContent: "Why it stands out" }), reasonList(row, ds),
+    el("h3", { textContent: "Where it sits" }), strips(row, ds),
+    el("h3", { textContent: "What each detector says" }), detectors(row, ds),
+    only, el("p", { className: "case-foot", textContent: "Unusual is not proof. You decide." }));
+  return [head, body];
+}
+function renderCase(v) {
+  if (desk.matches) {
+    state.sel ??= v.alerts[0] ?? current.ranked[0];
+    $("case-folder").textContent = `Case ${int.format(state.sel._rank.iforest)}`;
+    $("case-panel").replaceChildren(...caseView(state.sel, v, false));
+  } else if ($("case").open && state.sel) {
+    $("case-sheet").replaceChildren(...caseView(state.sel, v, true));
+  }
+}
+function select(row, from) {
+  state.sel = row;
+  writeHash();
+  render();
+  announce(`Case ${row._rank.iforest} of ${int.format(current.rows.length)}: ${title(row)}`);
+  if (!desk.matches) showSheet(from);
+}
+function showSheet(from) {
+  opener = from ?? null;
+  $("case-sheet").replaceChildren(...caseView(state.sel, view(), true));
+  if (!$("case").open) $("case").showModal();
+}
+function step(d) {
+  const list = view().alerts.filter(inStatus);
+  if (!list.length) return;
+  const i = list.indexOf(state.sel), next = list[i < 0 ? 0 : Math.min(list.length - 1, Math.max(0, i + d))];
+  if (list.indexOf(next) >= 50) state.showAll = true;
+  state.sel = next;
+  writeHash();
+  render();
+  announce(`Case ${next._rank.iforest}: ${title(next)}`);
+}
+function setMark(row, x) {
+  const before = view().alerts.filter(inStatus), i = before.indexOf(row); // before marking: "To review" drops the row once marked
+  if (marks[row._i] === x) delete marks[row._i]; else marks[row._i] = x;
+  saveMarks();
+  const now = marks[row._i];
+  announce(now ? `${title(row)}: ${VERDICT[now].toLowerCase()}.` : `${title(row)}: mark cleared.`);
+  if (now) { // move on to the next alert nobody has looked at yet
+    const next = [...before.slice(i + 1), ...before.slice(0, Math.max(0, i))].find((r) => !marks[r._i]);
+    if (next) { state.sel = next; if (before.indexOf(next) >= 50) state.showAll = true; }
+  }
+  writeHash();
+  render();
+}
+function onKeys(e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, select, textarea")) return;
+  const key = e.key.toLowerCase(), arrows = !!e.target.closest("#queue-region");
+  const move = key === "j" || (arrows && e.key === "ArrowDown") ? 1 : key === "k" || (arrows && e.key === "ArrowUp") ? -1 : 0;
+  if (!move && key !== "f" && key !== "e") return;
+  e.preventDefault();
+  if (e.repeat && !move) return; // holding F or E must not mark the whole queue
+  const focused = e.target.dataset?.focus?.startsWith("row-") ? current.rows[Number(e.target.dataset.focus.slice(4))] : null;
+  if (focused) state.sel = focused; // act on the row that has focus, not on an older selection
+  if (move) step(move);
+  else if (state.sel && state.sel._rank.iforest <= queueSize()) setMark(state.sel, key);
+}
+
+// ---- verdicts (this browser only) ------------------------------------------------------
+// ponytail: keyed by row index; a data rebuild orphans verdicts; upgrade: key by date|title|amount
+function readMarks(ds) {
+  const m = {};
+  if (ds.key !== "upload") {
+    try {
+      const raw = JSON.parse(localStorage.getItem(`desk:v1:${ds.key}`) || "{}");
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        for (const [i, x] of Object.entries(raw)) if (/^\d{1,6}$/.test(i) && Number(i) < ds.rows.length && (x === "f" || x === "e")) m[i] = x;
+      }
+    } catch { saved = false; }
+  }
+  return m;
+}
+function saveMarks() {
+  if (current.key === "upload") return;
+  try { localStorage.setItem(`desk:v1:${current.key}`, JSON.stringify(marks)); saved = true; } catch { saved = false; }
+}
+
+// ---- charts ------------------------------------------------------------------------------
+const shown = (id) => !!window.echarts && $(id).offsetWidth > 0;
+function drawTimeline(v) {
+  const b = current.bucket;
+  $("timeline-panel").hidden = !b;
+  if (!b) return;
+  const { all, hits } = v.series, [lo, hi] = windowIdx();
+  $("tl-title").textContent = `${cap(current.noun)} and alerts per ${b.unit}`;
+  $("timeline-table").replaceChildren(
+    el("tr", {}, ...[cap(b.unit), cap(current.noun), "Alerts"].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
+    ...b.keys.map((k, i) => el("tr", {}, el("td", { textContent: bucketLabel(i) }), el("td", { className: "num", textContent: int.format(all[i]) }), el("td", { className: "num", textContent: int.format(hits[i]) }))));
+  if (!shown("timeline")) return;
+  chart("timeline", "svg", (c) => {
+    c.on("datazoom", () => {
+      const z = c.getOption().dataZoom[0], last = current.bucket.keys.length - 1;
+      if (z.startValue == null) return;
+      if (z.startValue <= 0 && z.endValue >= last) setDates(null, null);
+      else setDates(current.bucket.keys[z.startValue], bucketEnd(z.endValue));
+    });
+    c.on("click", (p) => { if (p.componentType === "series") setDates(current.bucket.keys[p.dataIndex], bucketEnd(p.dataIndex)); });
+  }).setOption({
+    ...base(`${cap(current.noun)} and alerts per ${b.unit}, ${date(current.minDay)} to ${date(current.maxDay)}: ${int.format(sum(all))} ${current.noun}, ${int.format(sum(hits))} alerts.`),
+    tooltip: { ...tipStyle(), trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => {
+      const i = ps[0].dataIndex;
+      return tipBox(bucketLabel(i), [cap(current.noun), int.format(all[i])], ["Alerts", int.format(hits[i])], ["Alert rate", all[i] ? pct(hits[i] / all[i], 1) : "–"]);
+    } },
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    grid: [{ left: 48, right: 12, top: 18, height: 82 }, { left: 48, right: 12, top: 112, height: 42 }],
+    xAxis: [0, 1].map((g) => ({ type: "category", gridIndex: g, data: b.keys, axisLine: { show: g === 1 }, axisLabel: { show: g === 1, formatter: shortLabel } })),
+    yAxis: [
+      { type: "value", gridIndex: 0, minInterval: 1, splitNumber: 2, name: current.noun, nameGap: 6, nameTextStyle: { align: "left" } },
+      { type: "value", gridIndex: 1, minInterval: 1, splitNumber: 1, name: "alerts", nameGap: 6, nameTextStyle: { align: "left" } },
+    ],
+    dataZoom: [{ type: "slider", xAxisIndex: [0, 1], startValue: lo, endValue: hi, bottom: 4, height: 20, brushSelect: false, showDetail: false,
+      borderColor: token("--hairline"), fillerColor: "rgba(42,120,214,.16)", handleStyle: { color: token("--surface"), borderColor: token("--accent") },
+      moveHandleSize: 0, dataBackground: { lineStyle: { color: token("--context") }, areaStyle: { color: token("--surface-2") } },
+      selectedDataBackground: { lineStyle: { color: token("--model") }, areaStyle: { color: token("--surface-2") } } }],
+    series: [
+      { name: cap(current.noun), type: "bar", xAxisIndex: 0, yAxisIndex: 0, data: all, barCategoryGap: "25%", itemStyle: { color: token("--context"), borderRadius: [2, 2, 0, 0] },
+        markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: token("--ink"), type: "dashed", width: 1 },
+          data: state.sel?._day ? [{ xAxis: b.key(state.sel._day) }] : [] } },
+      { name: "Alerts", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: hits, barCategoryGap: "25%", itemStyle: { color: token("--flag"), borderRadius: [2, 2, 0, 0] } },
+    ],
+  });
+}
+
+function drawCalendar(v) {
+  const ds = current;
+  $("calendar-panel").hidden = !ds.minDay;
+  if (!ds.minDay) return;
+  const perDay = new Map();
+  for (const r of ds.rows) {
+    if (!r._day || !v.pass(r, "date")) continue;
+    const d = perDay.get(r._day) ?? [0, 0];
+    d[0]++;
+    if (r._rank.iforest <= v.K) d[1]++;
+    perDay.set(r._day, d);
+  }
+  const daily = (Date.parse(ds.maxDay) - Date.parse(ds.minDay)) / 864e5 <= 400;
+  // Long ledgers get a month x year grid instead of a calendar of 4px days.
+  const cells = daily ? [...perDay].map(([d, [n, a]]) => ({ from: d, to: d, label: date(d), n, a })) : (() => {
+    const m = new Map();
+    for (const [d, [n, a]] of perDay) { const k = `${d.slice(0, 7)}-01`, x = m.get(k) ?? { n: 0, a: 0 }; x.n += n; x.a += a; m.set(k, x); }
+    return [...m].map(([k, x]) => ({ from: k, to: addDays(nextMonth(k), -1), label: new Date(`${k}T12:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" }), ...x }));
+  })();
+  $("cal-title").textContent = daily ? "Alerts by day" : "Alerts by month";
+  $("cal-hint").textContent = `Darker means more alerts that ${daily ? "day" : "month"}. Click a cell to filter to it.`;
+  $("calendar-table").replaceChildren(el("tr", {}, ...[daily ? "Day" : "Month", "Alerts", cap(ds.noun)].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
+    ...cells.filter((c) => c.a).sort((x, y) => (x.from < y.from ? -1 : 1)).map((c) => el("tr", {}, el("td", { textContent: c.label }),
+      el("td", { className: "num", textContent: int.format(c.a) }), el("td", { className: "num", textContent: int.format(c.n) }))));
+  if (!shown("calendar")) return;
+  const pieces = [
+    { value: 0, label: "0", color: token("--surface-2") }, { value: 1, label: "1", color: token("--seq-1") }, { value: 2, label: "2", color: token("--seq-2") },
+    { value: 3, label: "3", color: token("--seq-3") }, { gte: 4, label: "4+ alerts", color: token("--seq-4") },
+  ];
+  const years = daily ? [] : [...new Set(cells.map((c) => c.from.slice(0, 4)))].sort();
+  const months = Array.from({ length: 12 }, (_, i) => new Date(2001, i, 1).toLocaleDateString("en-GB", { month: "short" }));
+  chart("calendar", "svg", (c) => c.on("click", (p) => { const cell = p.data?.cell; if (cell) setDates(cell.from, cell.to); })).setOption({
+    ...base(`${daily ? "Alerts per day" : "Alerts per month"}: ${int.format(sum(cells.map((c) => c.a)))} alerts on ${cells.filter((c) => c.a).length} of ${cells.length} ${daily ? "days" : "months"} with ${ds.noun}.`),
+    tooltip: { ...tipStyle(), formatter: (p) => { const c = p.data.cell; return tipBox(c.label, ["Alerts", int.format(c.a)], [cap(ds.noun), int.format(c.n)], ["Alert rate", pct(c.a / c.n, 1)]); } },
+    visualMap: { type: "piecewise", pieces, dimension: daily ? 1 : 2, orient: "horizontal", left: daily ? 34 : 48, bottom: 0, itemWidth: 12, itemHeight: 12, itemGap: 8,
+      selectedMode: false, textStyle: { color: token("--ink-2"), fontSize: 11 } },
+    calendar: daily ? { range: [ds.minDay, ds.maxDay], top: 26, left: 34, right: 8, bottom: 34, cellSize: ["auto", 16],
+      dayLabel: { firstDay: 1, nameMap: "en", color: token("--muted"), fontSize: 10 }, monthLabel: { color: token("--ink-2"), fontSize: 11 }, yearLabel: { show: false },
+      splitLine: { lineStyle: { color: token("--axis"), width: 1 } }, itemStyle: { color: token("--surface"), borderColor: token("--surface"), borderWidth: 2 } } : undefined,
+    grid: daily ? undefined : { left: 48, right: 8, top: 8, bottom: 56 },
+    xAxis: daily ? undefined : { type: "category", data: months, splitArea: { show: false } },
+    yAxis: daily ? undefined : { type: "category", data: years, inverse: true },
+    series: [{ type: "heatmap", coordinateSystem: daily ? "calendar" : "cartesian2d", itemStyle: { borderColor: token("--surface"), borderWidth: 2 },
+      data: cells.map((c) => ({ value: daily ? [c.from, c.a] : [Number(c.from.slice(5, 7)) - 1, years.indexOf(c.from.slice(0, 4)), c.a], cell: c })) }],
+  }, { notMerge: true });
+}
+
+function drawRates(v, j) {
+  const ds = current, dim = ds.dims[j], panel = $(`rate${j}-panel`);
+  if (!dim) { panel.hidden = true; return; }
+  const groups = new Map();
+  for (const r of ds.rows) {
+    if (!v.pass(r, j ? "d2" : "d1")) continue;
+    const g = String(r[dim]), x = groups.get(g) ?? { g, n: 0, a: 0 };
+    x.n++;
+    if (r._rank.iforest <= v.K) x.a++;
+    groups.set(g, x);
+  }
+  const all = [...groups.values()], byRate = (x, y) => y.a / y.n - x.a / x.n || y.n - x.n;
+  const big = all.filter((x) => x.n >= 30).sort(byRate), top = big.slice(0, 12), chosen = state[`d${j + 1}`];
+  panel.hidden = big.length < 2;
+  if (panel.hidden) return;
+  rateTop[j] = top;
+  const [name, plural] = DIM[dim] ?? [dim, dim], overall = sum(all.map((x) => x.a)) / Math.max(1, sum(all.map((x) => x.n)));
+  const restAlerts = sum(all.map((x) => x.a)) - sum(top.map((x) => x.a));
+  $(`rate${j}-title`).textContent = `Alert rate by ${name.toLowerCase()}`;
+  $(`rate${j}-hint`).textContent = `Share of each ${name.toLowerCase()}'s ${ds.noun} in the queue. ${plural[0].toUpperCase() + plural.slice(1)} with 30 or more ${ds.noun}. Click a bar to filter.`;
+  $(`rate${j}-note`).textContent = all.length > top.length ? `The other ${int.format(all.length - top.length)} ${plural} hold ${int.format(restAlerts)} alerts.` : "";
+  $(`rate${j}-table`).replaceChildren(el("tr", {}, ...[name, "In queue", cap(ds.noun), "Rate"].map((h, k) => el("th", { className: k ? "num" : "", textContent: h }))),
+    ...[...all].sort(byRate).map((x) => el("tr", {}, el("td", { textContent: x.g }), el("td", { className: "num", textContent: int.format(x.a) }),
+      el("td", { className: "num", textContent: int.format(x.n) }), el("td", { className: "num", textContent: pct(x.a / x.n, 1) }))));
+  $(`rate${j}`).style.height = `${top.length * 26 + 44}px`;
+  if (!shown(`rate${j}`)) return;
+  chart(`rate${j}`, "svg", (c) => c.on("click", (p) => {
+    const g = rateTop[j][p.dataIndex]?.g;
+    if (g == null) return;
+    state[`d${j + 1}`] = state[`d${j + 1}`] === g ? null : g;
+    state.showAll = false;
+    schedule();
+  })).setOption({
+    ...base(`Alert rate by ${name.toLowerCase()}: the ${top.length} highest rates among ${plural} with 30 or more ${ds.noun}. Highest: ${top[0].g}, ${pct(top[0].a / top[0].n, 1)}. Overall ${pct(overall, 1)}.`),
+    grid: { left: 8, right: 64, top: 22, bottom: 8, containLabel: true },
+    tooltip: { ...tipStyle(), trigger: "item", formatter: (p) => {
+      const x = rateTop[j][p.dataIndex];
+      return tipBox(x.g, ["In queue", `${int.format(x.a)} of ${int.format(x.n)}`], ["Alert rate", pct(x.a / x.n, 1)], ["Overall", pct(overall, 1)]);
+    } },
+    xAxis: { type: "value", splitNumber: 3, axisLabel: { formatter: "{value}%" } },
+    yAxis: { type: "category", inverse: true, data: top.map((x) => x.g), axisLabel: { color: token("--ink-2"), fontFamily: token("--sans"), fontSize: 12,
+      formatter: (s) => (s.length > 28 ? `${s.slice(0, 27)}…` : s) } },
+    series: [{ type: "bar", barMaxWidth: 16,
+      data: top.map((x) => ({ value: +((x.a / x.n) * 100).toFixed(2), itemStyle: { color: token("--flag"), opacity: chosen == null || chosen === x.g ? 1 : 0.35, borderRadius: [0, 3, 3, 0] } })),
+      label: { show: true, position: "right", color: token("--ink-2"), fontFamily: token("--mono"), fontSize: 11, formatter: (p) => `${rateTop[j][p.dataIndex].a} of ${rateTop[j][p.dataIndex].n}` },
+      markLine: { silent: true, symbol: "none", lineStyle: { color: token("--ink-2"), type: "dashed", width: 1 },
+        label: { position: "start", color: token("--ink-2"), fontSize: 11, formatter: `overall ${pct(overall, 1)}` }, data: [{ xAxis: +(overall * 100).toFixed(2) }] } }],
+  }, { notMerge: true });
+}
+
+function drawScatter(v) {
+  const ds = current, key = ds.amountKey, cut = ds.ranked[v.K - 1].iforest;
+  const ruled = ds.rows.filter((r) => r._rank._rule <= v.K && r[key] >= ds.mid).map((r) => r[key]);
+  const ruleCut = ruled.length ? Math.min(...ruled) : null, log = v.rows.length > 0 && v.rows.every((r) => r[key] > 0);
+  const others = [], hits = [], quad = { both: 0, model: 0, rule: 0, neither: 0 };
+  for (const r of v.rows) {
+    const m = r._rank.iforest <= v.K, rule = r._rank._rule <= v.K;
+    (m ? hits : others).push([r.iforest, r[key], r._i]);
+    quad[m && rule ? "both" : m ? "model" : rule ? "rule" : "neither"]++;
+  }
+  $("quadrant").replaceChildren(el("tr", {}, el("th", { textContent: "Flagged by" }), el("th", { className: "num", textContent: cap(ds.noun) })),
+    ...[["the model and the amount rule", quad.both], ["the model only", quad.model], ["the amount rule only", quad.rule], ["neither", quad.neither]]
+      .map(([k, n]) => el("tr", {}, el("td", { textContent: k }), el("td", { className: "num", textContent: int.format(n) }))));
+  if (!shown("scatter")) return;
+  const amountName = LABEL[key];
+  chart("scatter", "canvas", (c) => c.on("click", (p) => {
+    const row = current.rows[p.data?.[2]];
+    if (row) requestAnimationFrame(() => { showTab("queue"); select(row, null); });
+  })).setOption({
+    ...base(`${int.format(v.rows.length)} ${ds.noun} by anomaly score and ${amountName.toLowerCase()}. ${int.format(quad.model)} alerts would be missed by an amount-only rule of the same size.`),
+    grid: { left: 60, right: 20, top: 24, bottom: 44 },
+    tooltip: { ...tipStyle(), trigger: "item", formatter: (p) => {
+      const r = current.rows[p.data[2]];
+      return tipBox(title(r), [amountName, money(r[key], ds.currency)], ["Score", r.iforest.toFixed(2)], ["Rank", `#${int.format(r._rank.iforest)} of ${int.format(ds.rows.length)}`],
+        ...(parseReasons(r.reason)[0] ? [["First reason", LABEL[parseReasons(r.reason)[0].f] ?? parseReasons(r.reason)[0].f]] : []));
+    } },
+    xAxis: { type: "value", scale: true, name: "anomaly score (higher = more unusual)", nameLocation: "middle", nameGap: 28 },
+    yAxis: { type: log ? "log" : "value", name: amountName.toLowerCase(), nameTextStyle: { align: "left" }, axisLabel: { formatter: (x) => compact.format(x) } },
+    series: [
+      { name: "Everything else", type: "scatter", data: others, symbolSize: 4, large: true, largeThreshold: 2000, progressive: 0, itemStyle: { color: token("--context"), opacity: 0.4 },
+        markLine: { silent: true, symbol: "none", lineStyle: { color: token("--ink-2"), type: "dashed", width: 1 }, label: { color: token("--ink-2"), fontSize: 11 },
+          data: [{ xAxis: cut, label: { formatter: "review cut-off", position: "end" } }, ...(ruleCut != null ? [{ yAxis: ruleCut, label: { formatter: "amount-only rule", position: "insideStartTop" } }] : [])] } },
+      { name: "In the queue", type: "scatter", data: hits, symbol: "diamond", symbolSize: 10, itemStyle: { color: token("--flag"), borderColor: token("--surface"), borderWidth: 1.5 } },
+      { name: "Selected", type: "scatter", silent: true, z: 5, symbol: "circle", symbolSize: 20, itemStyle: { color: "transparent", borderColor: token("--ink"), borderWidth: 2 },
+        data: state.sel && v.pass(state.sel) ? [[state.sel.iforest, state.sel[key], state.sel._i]] : [] },
+    ],
+  }, { notMerge: true });
+}
+
+function renderCompare(v) {
+  const rest = v.rows.filter((r) => r._rank.iforest > v.K);
+  $("compare").replaceChildren(...current.features.map((f) => {
+    const a = v.alerts.length ? median(v.alerts.map((r) => r._pct[f])) : null, b = rest.length ? median(rest.map((r) => r._pct[f])) : null;
+    const track = el("span", { className: "track", ariaHidden: "true" }, b != null ? el("span", { className: "dot rest" }) : null, a != null ? el("span", { className: "dot alert" }) : null);
+    track.style.setProperty("--a", `${a}%`);
+    track.style.setProperty("--b", `${b}%`);
+    return el("li", {}, el("span", { className: "label", textContent: LABEL[f] ?? f }), track,
+      el("span", { className: "val small", textContent: `alerts ${a != null ? `p${Math.round(a)}` : "–"} · others ${b != null ? `p${Math.round(b)}` : "–"}` }));
+  }));
+}
+
+// ---- model tab --------------------------------------------------------------------------------
+function drawUlb() {
+  if (!report || !shown("ulb")) return;
+  chart("ulb").setOption(ulbOption(report, ["Isolation Forest", "ensemble", "KNN", "LOF", "amount rule", "random"]), { notMerge: true });
+}
+function resetCalculator() {
+  const L = sum(current.rows.map((r) => r[current.amountKey])) / current.rows.length;
+  $("loss").value = Math.round(L);
+  $("cost").value = Math.max(1, Math.round(L / 40)); // ponytail: default review cost = 1/40 of the average payment
+  $("calc-note").textContent = `The average ${current.noun.replace(/s$/, "")} here is ${money(L, current.currency)}, so the loss starts there. The review cost is an assumption: edit both.`;
+}
+function renderCalculator() {
+  if (!report) return;
+  const read = (id) => {
+    const raw = $(id).value, x = Number(raw), ok = raw !== "" && Number.isFinite(x) && x >= 0 && x <= 1e12;
+    $(id).setAttribute("aria-invalid", String(!ok));
+    return ok ? x : null;
+  };
+  const C = read("cost"), L = read("loss"), ds = current;
+  if (C == null || L == null) {
+    $("calc-result").textContent = "Enter a positive number.";
+    $("calc-detail").textContent = "";
+    $("calc-use").hidden = true;
+    return;
+  }
+  // Net value of reviewing a share r of N payments: frauds caught x loss avoided - reviews x cost.
+  // Recall comes from the real card data; between measured points the curve is linear, so the best is always a measured point.
+  const u = report.ulb, N = ds.rows.length, pi = u.frauds / u.rows, rates = [0, ...u.rates], R = [0, ...u.recall[MODEL]];
+  const pts = rates.map((r, j) => ({ r, j, net: N * (R[j] * pi * L - r * C), caught: R[j] * pi * N, reviews: Math.round(r * N) }));
+  const best = pts.reduce((a, b) => (b.net > a.net ? b : a));
+  if (best.r === 0) {
+    $("calc-result").textContent = "At these costs, reviewing does not pay.";
+    $("calc-detail").textContent = "Every queue size costs more in reviews than it saves in fraud.";
+    $("calc-use").hidden = true;
+  } else {
+    $("calc-result").textContent = `Best queue: ${rateText(best.r * 100)} · ${int.format(best.reviews)} ${ds.noun} · net ${money(best.net, ds.currency)}`;
+    $("calc-detail").textContent = `Catches about ${Math.round(best.caught)} of ${Math.round(pi * N)} expected frauds; 1 in ${Math.round(1 / u.precision[MODEL][best.j - 1])} alerts is fraud.${ds.currency ? "" : " Amounts are in your file's currency."}`;
+    $("calc-use").hidden = false;
+    $("calc-use").textContent = `Use ${rateText(best.r * 100)} in my queue`;
+    $("calc-use").dataset.ri = RATES.indexOf(+(best.r * 100).toFixed(2));
+  }
+  $("net-table").replaceChildren(el("tr", {}, ...["Reviewed", "Reviews", "Frauds caught", "Net value"].map((h, k) => el("th", { className: k ? "num" : "", textContent: h }))),
+    ...pts.map((p) => el("tr", {}, el("td", { textContent: rateText(p.r * 100) }), el("td", { className: "num", textContent: int.format(p.reviews) }),
+      el("td", { className: "num", textContent: p.caught.toFixed(1) }), el("td", { className: "num", textContent: money(p.net, ds.currency) }))));
+  if (!shown("net")) return;
+  chart("net").setOption({
+    ...base(`Net value of the review queue for ${int.format(N)} ${ds.noun}, best at ${rateText(best.r * 100)}.`),
+    grid: { left: 60, right: 20, top: 28, bottom: 40 },
+    tooltip: { ...tipStyle(), trigger: "axis", formatter: (ps) => {
+      const p = pts[ps[0].dataIndex];
+      return tipBox(`Reviewing ${rateText(p.r * 100)}`, ["Net value", money(p.net, ds.currency)], ["Reviews", int.format(p.reviews)], ["Frauds caught", p.caught.toFixed(1)]);
+    } },
+    xAxis: { type: "value", min: 0, max: 5, name: "share of payments reviewed", nameLocation: "middle", nameGap: 26, axisLabel: { formatter: "{value}%" } },
+    yAxis: { type: "value", axisLabel: { formatter: (x) => compact.format(x) } },
+    series: [{ type: "line", data: pts.map((p) => [+(p.r * 100).toFixed(2), Math.round(p.net)]), symbol: "circle", symbolSize: 6,
+      lineStyle: { color: token("--model"), width: 2 }, itemStyle: { color: token("--model") },
+      markPoint: { silent: true, symbol: "circle", symbolSize: 12, itemStyle: { color: token("--model"), borderColor: token("--surface"), borderWidth: 2 },
+        label: { show: true, position: "top", color: token("--ink"), fontWeight: 600, formatter: "best" }, data: [{ coord: [+(best.r * 100).toFixed(2), Math.round(best.net)] }] },
+      markLine: { silent: true, symbol: "none", lineStyle: { color: token("--ink-2"), type: "dashed", width: 1 }, label: { show: false },
+        data: RATES[state.ri] <= 5 ? [{ xAxis: RATES[state.ri] }] : [] } }],
+  }, { notMerge: true });
+  $("net-caption").textContent = RATES[state.ri] <= 5 ? `Dot: the best queue. Dashed line: your queue now (${rateText(RATES[state.ri])}).`
+    : `Dot: the best queue. Your queue now (${rateText(RATES[state.ri])}) is beyond the measured range.`;
+}
+function walkthrough(ds) {
+  const row = ds.ranked[0], n = ds.rows.length, k = Math.round(0.02 * n), cut = ds.ranked[k - 1].iforest;
+  $("step-row").replaceChildren(statement(row, ds));
+  $("step-features").replaceChildren(strips(row, ds));
+  $("step-detectors").replaceChildren(detectors(row, ds));
+  $("step-capacity").textContent = `A team that reviews 2% checks the top ${int.format(k)} of ${int.format(n)} payments: everything scoring above ${cut.toFixed(2)}. This one scores ${row.iforest.toFixed(2)}, the highest, so it is first in line.`;
+  $("step-reasons").replaceChildren(reasonList(row, ds));
+}
+function renderModel(rep, dc) {
+  const u = rep.ulb, i = u.rates.indexOf(0.01), i0 = u.rates.indexOf(0.001), recall = u.recall[MODEL][i];
+  const weak = ["KNN", "LOF"].filter((m) => u.roc_auc[m] < 0.7);
+  $("ulb-takeaway").textContent = `Reviewing the top 1%, Isolation Forest catches ${pct(recall)} of real frauds, and 1 in ${Math.round(1 / u.precision[MODEL][i])} of its alerts is fraud. Averaging all three catches ${pct(u.recall.ensemble[i])}${weak.length ? `, because ${weak.join(" and ")} is near random here (ROC-AUC ${weak.map((m) => u.roc_auc[m].toFixed(2)).join(", ")})` : ""}. At 0.1% the gap is ${pct(u.recall[MODEL][i0])} against ${pct(u.recall.ensemble[i0])}.`;
+  const methods = Object.keys(METHOD_STYLE);
+  $("ulb-table").replaceChildren(
+    el("tr", {}, ...["Method", "ROC-AUC", "PR-AUC", "Caught at 1%", "Precision at 1%"].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
+    ...methods.map((m) => el("tr", { className: m === MODEL ? "used" : "" }, el("td", { textContent: methodName(m) }),
+      ...[u.roc_auc[m].toFixed(3), u.pr_auc[m].toFixed(3), pct(u.recall[m][i]), pct(u.precision[m][i], 1)].map((t) => el("td", { className: "num mono", textContent: t })))));
+  $("ulb-curve-table").replaceChildren(
+    el("tr", {}, el("th", { textContent: "Reviewed" }), ...methods.map((m) => el("th", { className: "num", textContent: methodName(m) }))),
+    ...u.rates.map((r, j) => el("tr", {}, el("td", { textContent: rateText(r * 100) }), ...methods.map((m) => el("td", { className: "num", textContent: pct(u.recall[m][j]) })))));
+  $("step-choice").textContent = ["Isolation Forest", "ensemble", "KNN", "LOF"].map((m) => `${m === "ensemble" ? "Average" : m} ${pct(u.recall[m][i])}`).join("  ·  ");
+
+  const p = rep.planted, rule = p.by_type["amount only (robust z)"], model = p.by_type[MODEL], kinds = Object.keys(model);
+  $("dumbbell").replaceChildren(...kinds.map((kind) => {
+    const track = el("span", { className: "track", ariaHidden: "true" }, el("span", { className: "link" }), el("span", { className: "dot" }), el("span", { className: "dot m" }));
+    track.style.setProperty("--r", pct(rule[kind]));
+    track.style.setProperty("--m", pct(model[kind]));
+    return el("li", {}, el("span", { className: "label", textContent: kind }), track,
+      el("span", { className: "val small", textContent: `rule ${pct(rule[kind])} → model ${pct(model[kind])}` }));
+  }));
+  const wins = kinds.filter((k) => model[k] > rule[k]), losses = kinds.filter((k) => model[k] < rule[k]);
+  $("planted-takeaway").textContent = `The model wins on ${wins.join(" and ") || "no kind"}${losses.length ? ` and loses on ${losses.join(" and ")}, where a plain amount rule does better. Pair it with one hard amount rule.` : "."}`;
+  $("planted-table").replaceChildren(
+    el("tr", {}, ...["Method", "ROC-AUC", "Avg precision", "Caught at 2%"].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
+    ...Object.entries(p.methods).map(([m, x]) => el("tr", { className: m === MODEL ? "used" : "" }, el("td", { textContent: methodName(m) }),
+      ...["ROC-AUC", "avg precision", "recall @2%"].map((k) => el("td", { className: "num mono", textContent: `${x[k][0].toFixed(3)} ± ${x[k][1].toFixed(3)}` })))));
+
+  const kg = rep.notes.kaggle;
+  $("finding-hours").replaceChildren(el("strong", { textContent: `Every demo transaction happens between ${kg.first_hour}:00 and ${kg.last_hour}:59.` }), " Time of day carries no signal.");
+  $("finding-prev").replaceChildren(el("strong", { textContent: `The "previous transaction" date is later than the transaction on ${pct(kg.prev_date_later)} of rows.` }), " So time since the last one can't be computed.");
+  $("finding-device").replaceChildren(el("strong", { textContent: `${pct(kg.new_device_every_time)} of repeat customers use a new device every time.` }), " So a device change can't separate fraud.");
+  $("finding-capacity").replaceChildren(el("strong", { textContent: `A 0.75 outlier-probability cut would flag ${int.format(kg.prob_over_75)} of ${int.format(kg.rows)} demo transactions.` }), ` The top 2% is ${int.format(kg.top_2pct)}, a queue a team can work through.`);
+  document.querySelectorAll("[data-k]").forEach((node) => {
+    const x = node.dataset.k.split(".").reduce((o, k) => o?.[k], rep);
+    if (x != null) node.textContent = typeof x === "number" ? int.format(x) : DAY.test(x) ? date(x) : x;
+  });
+  walkthrough(dc);
+}
+
+// ---- datasets, tabs, hash ------------------------------------------------------------------------
+function renderDatasets() {
+  const items = [...Object.values(DATASETS), cache.upload].filter(Boolean).map((d) => {
+    const input = el("input", { type: "radio", name: "ds", value: d.key, checked: d.key === current?.key });
+    input.addEventListener("change", () => setDataset(d.key));
+    const label = el("label", {}, input, el("span", { textContent: d.short }));
+    if (d.key === "upload") label.title = d.name;
+    return label;
+  });
+  if (cache.upload) {
+    const remove = el("button", { className: "seg-x", type: "button", textContent: "✕" });
+    remove.setAttribute("aria-label", "Remove your file");
+    remove.addEventListener("click", async () => {
+      const showing = current === cache.upload;
+      delete cache.upload;
+      renderDatasets();
+      if (showing) await setDataset("dc");
+      $("datasets").querySelector("input:checked")?.focus();
+    });
+    items.push(remove);
+  }
+  $("datasets").replaceChildren(el("legend", { className: "sr-only", textContent: "Data" }), ...items);
+}
+async function setDataset(key) {
+  const mine = ++switchId;
+  let ds;
+  try {
+    if (key !== "upload") say(`Loading the ${DATASETS[key].name} data…`);
+    ds = key === "upload" ? cache.upload : await load(key);
+  } catch (err) {
+    if (mine !== switchId) return;
+    say("");
+    document.querySelectorAll("input[name=ds]").forEach((input) => { input.checked = input.value === current?.key; });
+    const retry = el("button", { className: "btn small", type: "button", textContent: "Retry" });
+    retry.addEventListener("click", async () => { await setDataset(key); $("datasets").querySelector("input:checked")?.focus(); });
+    $("banner").replaceChildren(el("span", { textContent: `${err.message} Check your connection and try again.` }), retry);
+    $("banner").hidden = false;
+    return;
+  }
+  if (mine !== switchId) return; // a later click won
+  $("banner").hidden = true;
+  say("");
+  current = ds;
+  current.bucket ??= current.minDay ? bucketer(current) : null;
+  Object.assign(state, { from: null, to: null, d1: null, d2: null, q: "", status: "all", showAll: false, sel: null });
+  $("q").value = "";
+  marks = current.marks ??= readMarks(current); // kept on the dataset: a new upload is a new object with no marks
+  charts.forEach((c) => c.clear());
+  document.querySelectorAll("input[name=ds]").forEach((input) => { input.checked = input.value === key; });
+  buildDims();
+  resetCalculator();
+  writeHash();
+  render();
+}
+function showTab(tab) {
+  state.tab = tab;
+  for (const t of TABS) {
+    const on = t === tab;
+    $(`tab-${t}`).setAttribute("aria-selected", String(on));
+    $(`tab-${t}`).tabIndex = on ? 0 : -1;
+    $(`view-${t}`).hidden = !on;
+  }
+  document.body.dataset.tab = tab;
+  writeHash();
+  render();
+}
+// Only these keys are read, and each is checked against what exists. Upload data never goes into the URL.
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1)), ds = h.get("ds"), tab = h.get("tab"), c = h.get("case");
+  return { ds: ds && Object.hasOwn(DATASETS, ds) ? ds : null, tab: TABS.includes(tab) ? tab : null, rank: /^\d{1,5}$/.test(c ?? "") ? Number(c) : null, upload: h.has("upload") };
+}
+function writeHash() {
+  if (!current) return;
+  const p = current.key === "upload" ? { tab: state.tab } : { ds: current.key, tab: state.tab, ...(state.sel ? { case: state.sel._rank.iforest } : {}) };
+  const next = `#${new URLSearchParams(p)}`;
+  if (location.hash === next) return;
+  try { history.replaceState(null, "", next); } catch { /* Safari rate-limits replaceState; the hash is only a convenience */ }
+}
+async function applyHash(h = readHash()) {
+  if (h.ds && current?.key !== h.ds) await setDataset(h.ds);
+  if (current && h.rank >= 1 && h.rank <= current.rows.length) state.sel = current.ranked[h.rank - 1];
+  showTab(h.tab ?? state.tab);
+  if (h.rank && state.sel && !desk.matches) showSheet(null);
+  if (h.upload && !$("upload").open) $("upload").showModal();
+}
+
+// ---- upload --------------------------------------------------------------------------------------
+$("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  e.target.value = ""; // allow re-uploading the same file
+  if (!file) return;
+  $("upload-error").textContent = "";
+  if (file.size > 4_000_000) { $("upload-error").textContent = "File too large: the limit is 4 MB. Export a shorter date range."; return; }
+  const form = new FormData();
+  form.append("file", file);
+  $("upload-status").textContent = `Scoring ${file.name}…`;
+  try {
+    const res = await fetch("/api/score", { method: "POST", body: form });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : `Upload failed (error ${res.status}).`);
+    const noun = body.recipe === "ledger" ? "withdrawals" : "transactions";
+    const ds = prepare(body, { key: "upload", name: file.name, short: "Your file", currency: null, noun, dims: [] });
+    ds.dims = UPLOAD_DIMS.filter((d) => {
+      const values = new Set(ds.rows.map((r) => r[d]));
+      return d in ds.rows[0] && values.size >= 2 && values.size <= Math.min(200, ds.rows.length / 2);
+    }).slice(0, 2);
+    cache.upload = ds;
+    renderDatasets();
+    $("upload").close();
+    await setDataset("upload");
+    say(`Scored ${int.format(ds.rows.length)} ${noun} from ${file.name}. Amounts are shown without a currency. Nothing was stored.`);
+    $("datasets").querySelector('input[value="upload"]')?.focus();
+  } catch (err) {
+    $("upload-error").textContent = err.message;
+  } finally {
+    $("upload-status").textContent = "";
+  }
+});
+
+function download() {
+  if (!current) return;
+  const rows = view().alerts.filter(inStatus);
+  if (!rows.length) return say("Nothing to export in this view.");
+  const keys = Object.keys(rows[0]).filter((k) => !k.startsWith("_"));
+  const cell = (value) => {
+    if (value == null) return "";
+    let s = String(value);
+    if (typeof value === "string" && /^[=+\-@\t\r]/.test(s)) s = "'" + s; // keep spreadsheets from running it as a formula
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [["rank", "verdict", ...keys].join(","),
+    ...rows.map((r) => [r._rank.iforest, VERDICT[marks[r._i]] ?? "", ...keys.map((k) => r[k])].map(cell).join(","))].join("\n");
+  // The byte-order mark makes Excel on Windows read the file as UTF-8 (Czech narrations use "·").
+  const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" })), download: `review_queue_${current.key}.csv` });
+  link.click();
+  URL.revokeObjectURL(link.href);
+  say(`Exported ${int.format(rows.length)} alerts with your marks.`);
+}
+
+// ---- wiring ---------------------------------------------------------------------------------------
+TABS.forEach((t) => $(`tab-${t}`).addEventListener("click", () => showTab(t)));
+$("tablist").addEventListener("keydown", (e) => {
+  const i = TABS.indexOf(state.tab), to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key];
+  if (to == null) return;
+  e.preventDefault();
+  const t = TABS[(to + TABS.length) % TABS.length];
+  showTab(t);
+  $(`tab-${t}`).focus();
+});
+$("rate").addEventListener("input", () => { state.ri = Math.min(RATES.length - 1, Math.max(0, Math.trunc(Number($("rate").value)) || 0)); state.showAll = false; schedule(); });
+document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
+  const n = Number(b.dataset.days);
+  if (n) setDates(addDays(current.maxDay, 1 - n), current.maxDay); else setDates(null, null);
+}));
+$("from").addEventListener("change", () => setDates($("from").value || current.minDay, $("to").value || current.maxDay));
+$("to").addEventListener("change", () => setDates($("from").value || current.minDay, $("to").value || current.maxDay));
+[1, 2].forEach((j) => $(`d${j}`).addEventListener("change", (e) => { state[`d${j}`] = e.target.value || null; state.showAll = false; render(); }));
+$("q").addEventListener("input", () => { state.q = $("q").value.slice(0, 100); state.showAll = false; schedule(); });
+document.querySelectorAll("#status-seg button").forEach((b) => b.addEventListener("click", () => { state.status = b.dataset.status; state.showAll = false; render(); }));
+$("more").addEventListener("click", () => { state.showAll = true; render(); $("queue").rows[50]?.querySelector("button")?.focus(); });
+for (const id of ["queue-region", "case-panel", "case"]) $(id).addEventListener("keydown", onKeys);
+$("case").addEventListener("close", () => { $("case-sheet").replaceChildren(); opener?.focus(); });
+$("case").addEventListener("click", (e) => { if (e.target === $("case")) $("case").close(); }); // click on the backdrop
+$("open-upload").addEventListener("click", () => { $("upload-error").textContent = ""; $("upload").showModal(); });
+$("export").addEventListener("click", download);
+$("calc-use").addEventListener("click", () => {
+  const ri = Number($("calc-use").dataset.ri);
+  if (ri >= 0) state.ri = ri;
+  showTab("queue");
+  $("tab-queue").focus();
+  say(`Queue set to ${rateText(RATES[state.ri])}.`);
+});
+for (const id of ["cost", "loss"]) $(id).addEventListener("input", () => renderCalculator());
+$("hint-ok").addEventListener("click", () => {
+  $("hint").hidden = true;
+  $(`tab-${state.tab}`).focus();
+  try { localStorage.setItem("desk:hint", "1"); } catch { /* still hidden for this visit */ }
+});
+try { $("hint").hidden = localStorage.getItem("desk:hint") === "1"; } catch { $("hint").hidden = false; }
+const wide = matchMedia("(min-width: 900px)");
+const syncFilters = () => { if (wide.matches) $("filters").open = true; };
+wide.addEventListener("change", syncFilters);
+$("filters").open = wide.matches; // collapsed behind "Filters" on phones
+desk.addEventListener("change", () => {
+  if (desk.matches && $("case").open) $("case").close();
+  if (!desk.matches) $("case-panel").replaceChildren();
+  render();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { resetCharts(); render(); });
+addEventListener("resize", schedule);
+addEventListener("hashchange", () => applyHash());
+if (!window.echarts) document.querySelectorAll("details.twin").forEach((d) => { d.open = true; });
+
+renderDatasets();
+fetch("data/report.json")
+  .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+  .then(async (rep) => { renderModel(rep, await load("dc")); report = rep; render(); })
+  .catch(() => { $("ulb-takeaway").textContent = "Results could not be loaded. Reload the page to try again."; });
+const first = readHash(); // read before setDataset rewrites the hash
+await setDataset(first.ds ?? "dc");
+await applyHash(first);
+</script>
+</body>
+</html>

@@ -87,3 +87,8 @@ def test_bad_uploads_are_rejected_with_a_reason(content, status, message):
 def test_dashboard_page_is_served():
     response = client.get("/")
     assert response.status_code == 200 and "<title>Transaction Anomaly Detector</title>" in response.text
+
+
+@pytest.mark.parametrize("path", ["/dashboard.html", "/app.js", "/style.css"])
+def test_site_files_are_served(path):
+    assert client.get(path).status_code == 200
