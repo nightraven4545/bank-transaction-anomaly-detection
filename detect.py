@@ -1,6 +1,7 @@
-"""Anomaly detection for bank transactions: features, scores, alerts, reason codes.
+"""Anomaly detection for transactions: feature recipes, scores, alerts, reason codes.
 
-Shared by notebook.ipynb, app.py and the tests.
+Shared by notebook.ipynb, report.py, app.py and the tests.
+Every feature is built so that higher means more unusual, which keeps reason codes one-directional.
 """
 
 import pandas as pd
@@ -19,6 +20,10 @@ FEATURES = [
     "amount_to_balance",
     "amount_vs_account_median",
 ]
+# Government purchase cards have no cardholder ID, so the agency and the merchant category are the baselines.
+PCARD_FEATURES = ["TransactionAmount", "amount_vs_agency_median", "amount_vs_category_median", "category_rarity_in_agency"]
+# Bank ledgers and statements: money going out, against the account's own history.
+LEDGER_FEATURES = ["Debit", "share_of_balance", "amount_vs_account_median", "days_since_prev"]
 
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -31,14 +36,50 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def score(df: pd.DataFrame, seed: int = 42) -> pd.DataFrame:
+def pcard_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Columns TransactionAmount, Agency, Category: compare each purchase with its agency and its category."""
+    out = df.copy()
+    amount = out["TransactionAmount"]
+    for col in ["Agency", "Category"]:
+        out[f"amount_vs_{col.lower()}_median"] = amount / out.groupby(col)["TransactionAmount"].transform("median").clip(lower=0.01)
+    per_agency = out.groupby("Agency")["Agency"].transform("size")
+    out["category_rarity_in_agency"] = 1 - out.groupby(["Agency", "Category"])["Agency"].transform("size") / per_agency
+    return out
+
+
+def ledger_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Columns AccountID, TransactionDate, Debit, Balance (after the transaction). Returns debit rows only."""
+    out = df.assign(TransactionDate=pd.to_datetime(df["TransactionDate"]))
+    out = out.sort_values(["AccountID", "TransactionDate"], kind="stable")
+    out = out[out["Debit"] > 0].copy()
+    # Balance before = balance after + debit. Clipping the denominator makes overdraft withdrawals score high.
+    out["share_of_balance"] = out["Debit"] / (out["Balance"] + out["Debit"]).clip(lower=1)
+    by_account = out.groupby("AccountID")
+    out["amount_vs_account_median"] = out["Debit"] / by_account["Debit"].transform("median").clip(lower=0.01)
+    gap = by_account["TransactionDate"].diff().dt.days  # long gap = dormant account suddenly paying out
+    out["days_since_prev"] = gap.fillna(gap.groupby(out["AccountID"]).transform("median")).fillna(0)
+    return out
+
+
+RECIPES = {
+    "bank": (add_features, FEATURES),
+    "pcard": (pcard_features, PCARD_FEATURES),
+    "ledger": (ledger_features, LEDGER_FEATURES),
+}
+
+
+def score(df: pd.DataFrame, features: list[str] = FEATURES, seed: int = 42) -> pd.DataFrame:
     """Anomaly z-scores from Isolation Forest, KNN and LOF, plus their mean ('ensemble').
+
+    The site ranks by 'iforest'. report.py measured it best on real fraud labels, on planted frauds
+    and on reason quality; LOF breaks on duplicate-heavy data and drags the mean down. KNN, LOF and the
+    mean are kept as second opinions and for the comparison on the results page.
 
     Same estimators and defaults that PyOD's IForest/KNN/LOF wrap (test_detect.py checks the
     scores match), minus PyOD's heavy numba dependency so the app stays small on Vercel.
     z = how many standard deviations above the average transaction a score sits.
     """
-    X = RobustScaler().fit_transform(df[FEATURES])
+    X = RobustScaler().fit_transform(df[features])
     # Training-set scores throughout: re-scoring the training data as "new" points would make
     # KNN/LOF count each point as its own neighbour and bias the scores downward.
     raw = {
@@ -59,11 +100,11 @@ def flag(scores: pd.Series, alert_rate: float = 0.02) -> pd.Series:
     return scores.rank(ascending=False, method="first") <= n_alerts
 
 
-def explain(df: pd.DataFrame, top: int = 2) -> pd.Series:
-    """Reason codes: the features where each transaction sits furthest from typical (by percentile)."""
-    pct = df[FEATURES].rank(pct=True)
-    order = (pct - 0.5).abs().to_numpy().argsort(axis=1)[:, ::-1][:, :top]
+def explain(df: pd.DataFrame, features: list[str] = FEATURES, top: int = 2) -> pd.Series:
+    """Reason codes: the features where each transaction ranks highest (higher always means more unusual)."""
+    pct = df[features].rank(pct=True)
+    order = pct.to_numpy().argsort(axis=1)[:, ::-1][:, :top]
     return pd.Series(
-        [", ".join(f"{FEATURES[j]} p{pct.iat[i, j] * 100:.0f}" for j in row) for i, row in enumerate(order)],
+        [", ".join(f"{features[j]} p{pct.iat[i, j] * 100:.0f}" for j in row) for i, row in enumerate(order)],
         index=df.index,
     )
