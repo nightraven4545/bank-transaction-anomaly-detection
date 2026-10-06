@@ -4,1029 +4,331 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Transaction Anomaly Detector</title>
-<meta name="description" content="Ranks payments by how unusual they are and explains every alert. Tested on 284,807 real card payments with confirmed fraud, a real Czech bank ledger, and live on Washington DC's public card spending.">
+<meta name="description" content="Unsupervised fraud triage: ranks payments by how unusual they are, explains every alert, and sizes the queue to your review team. Tested on real card fraud.">
 <meta property="og:title" content="Transaction anomaly detector">
 <meta property="og:description" content="Unsupervised fraud triage on real bank, card and government spending data, with a reason for every alert.">
 <meta property="og:image" content="https://raw.githubusercontent.com/nightraven4545/bank-transaction-anomaly-detection/main/images/app.png">
 <meta property="og:url" content="https://bank-transaction-anomaly-detection.vercel.app">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1018" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='1' y='1' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='9' y='1' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='1' y='9' width='6' height='6' fill='%239aa3ae'/%3E%3Crect x='9' y='9' width='6' height='6' fill='%23d03b3b'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f4f6f8; --surface: #fcfcfd; --surface-2: #eef1f4;
-    --ink: #121821; --ink-2: #465061; --muted: #5f6878;
-    --hairline: #dde2e8; --axis: #c3cad3;
-    --accent: #1c5cab; --accent-ink: #ffffff; --link: #1c5cab;
-    --model: #2a78d6; --context: #7f8896; --cell: #c3c9d1;
-    --flag: #d03b3b; --flag-ink: #b02a2a;
-    --shadow: 0 12px 40px rgba(18, 24, 33, .18);
-    --sans: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      color-scheme: dark;
-      --page: #0c0f14; --surface: #141922; --surface-2: #1b212c;
-      --ink: #eef2f6; --ink-2: #b3bdca; --muted: #8f99a8;
-      --hairline: #252c38; --axis: #343c4a;
-      --accent: #3987e5; --accent-ink: #0c0f14; --link: #6ea8f2;
-      --model: #3987e5; --context: #8a94a3; --cell: #343c49;
-      --flag: #e5484d; --flag-ink: #f08c8c;
-      --shadow: 0 12px 40px rgba(0, 0, 0, .5);
-    }
-  }
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body { margin: 0; background: var(--page); color: var(--ink); font: 400 17px/1.6 var(--sans); }
-  a { color: var(--link); text-underline-offset: 3px; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  h1, h2, h3 { margin: 0; text-wrap: balance; }
-  h1 { font-stretch: 72%; font-weight: 650; font-size: clamp(2.5rem, 1.4rem + 4vw, 4.5rem); line-height: 1.02; letter-spacing: -0.02em; }
-  h2 { font-stretch: 78%; font-weight: 650; font-size: clamp(1.75rem, 1.2rem + 1.8vw, 2.6rem); line-height: 1.08; letter-spacing: -0.01em; }
-  h3 { font-weight: 600; font-size: 1.15rem; line-height: 1.3; }
-  p { margin: 0; max-width: 65ch; text-wrap: pretty; }
-  ul, ol { margin: 0; padding: 0; list-style: none; }
-  .mono { font-family: var(--mono); }
-  .small { font-size: 14px; }
-  .muted { color: var(--muted); }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
-  @media (min-width: 640px) { .wrap { padding: 0 24px; } }
-  @media (min-width: 1024px) { .wrap { padding: 0 32px; } }
-  section { padding: 64px 0; scroll-margin-top: 56px; border-top: 1px solid var(--hairline); }
-  @media (min-width: 1024px) { section { padding: 96px 0; } }
-  .intro { color: var(--ink-2); margin-top: 12px; }
-  .skip { position: absolute; left: -9999px; }
-  .skip:focus { left: 16px; top: 8px; z-index: 30; background: var(--surface); padding: 8px 12px; border-radius: 8px; }
+  .wrap { max-width: 1680px; margin: 0 auto; padding: 0 var(--g); }
+  .nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--page) 92%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--hairline); }
+  .nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; }
+  .nav ul { display: flex; align-items: center; gap: 20px; font-size: 15px; white-space: nowrap; }
+  .nav a:not(.brand):not(.btn) { color: var(--ink-2); text-decoration: none; }
+  .nav a:not(.brand):not(.btn):hover { color: var(--ink); text-decoration: underline; }
+  @media (max-width: 720px) { .nav .wide { display: none; } }
+  @media (max-width: 420px) { .brand > span:last-child { display: none; } }
 
-  /* nav */
-  .nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--page) 92%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--hairline); }
-  .nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; }
-  .brand { display: inline-flex; align-items: center; min-height: 44px; min-width: 24px; color: var(--ink); text-decoration: none; font-weight: 650; font-stretch: 80%; font-size: 18px; white-space: nowrap; }
-  .brand::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; background: var(--flag); vertical-align: 1px; }
-  .nav ul { display: flex; gap: 20px; font-size: 15px; white-space: nowrap; }
-  .nav a:not(.brand) { color: var(--ink-2); text-decoration: none; }
-  .nav a:not(.brand):hover { color: var(--ink); text-decoration: underline; }
-  @media (max-width: 720px) { .nav .wide { display: none; } .nav ul { gap: 14px; } }
-  @media (max-width: 480px) { .brand span { display: none; } }
-
-  /* buttons and controls */
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 16px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink); font: 600 15px/1.2 var(--sans); text-decoration: none; cursor: pointer; transition: background .16s; }
-  .btn:hover { background: var(--surface-2); }
-  .btn:active { transform: scale(.98); }
-  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-  .btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
-  .btn input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
-  .btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
-  select { font: 500 15px/1.2 var(--sans); min-height: 44px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--hairline); background: var(--surface); color: var(--ink); max-width: 100%; }
-  input[type=range] { accent-color: var(--accent); width: 100%; min-height: 32px; }
-
-  /* hero */
-  .hero { padding: 40px 0 64px; border-top: 0; }
-  .hero .wrap { display: grid; gap: 40px; }
-  @media (min-width: 960px) { .hero .wrap { grid-template-columns: 5fr 7fr; align-items: start; gap: 48px; } }
-  .hero .lede { font-size: 19px; color: var(--ink-2); margin-top: 20px; }
-  .result { margin-top: 28px; padding: 4px 0 4px 18px; border-left: 3px solid var(--model); font-size: 18px; }
-  .result strong { font-stretch: 85%; font-weight: 700; }
-  .result .big { display: block; font-stretch: 72%; font-weight: 650; font-size: clamp(2.6rem, 2rem + 2vw, 3.4rem); line-height: 1.05; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 28px; }
-  .chip { font: 500 13px/1 var(--mono); padding: 7px 9px; border: 1px solid var(--hairline); border-radius: 4px; color: var(--ink-2); text-decoration: none; background: var(--surface); }
-  .chip:hover { border-color: var(--ink-2); }
-  .chip b { font-weight: 600; color: var(--ink); }
-  .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  .haystack { position: relative; margin: 0; }
-  .haystack canvas { display: block; max-width: 100%; cursor: crosshair; }
-  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; color: var(--ink-2); margin-bottom: 10px; }
+  /* hero: copy on the left, the haystack bleeding off the right edge */
+  .hero { display: grid; gap: 32px; padding: 40px 0 56px max(var(--g), calc((100% - 1680px) / 2 + var(--g))); overflow-x: clip; }
+  .hero-copy { padding-right: var(--g); min-width: 0; }
+  @media (min-width: 1024px) { .hero { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; padding-top: 64px; } .hero-copy { padding-right: 0; } }
+  h1 { font-stretch: 70%; font-weight: 700; font-size: clamp(2.6rem, 1.2rem + 4.4vw, 5.25rem); line-height: .98; letter-spacing: -.025em; }
+  .lede { margin-top: 20px; font-size: 19px; color: var(--ink-2); max-width: 46ch; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; margin-top: 28px; }
+  @media (max-width: 639px) { .actions .btn { width: 100%; } }
+  .slip { margin-top: 48px; max-width: 520px; }
+  .slip-top { display: flex; gap: 16px; justify-content: space-between; align-items: start; }
+  .slip h3 { font-size: 1.3rem; font-stretch: 85%; line-height: 1.15; overflow-wrap: anywhere; }
+  .slip-amount { font: 650 1.6rem/1.1 var(--sans); font-stretch: 80%; white-space: nowrap; }
+  .slip .stamp { margin: 12px 0 6px; }
+  .slip-nav { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+  .slip-nav a { margin-left: auto; font-weight: 600; }
+  @media (pointer: coarse) { .slip-nav .btn { min-width: 44px; } }
+  .haystack { margin: 0; min-width: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; color: var(--ink-2); margin-bottom: 10px; padding-right: var(--g); }
   .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; background: var(--cell); }
   .legend .flagged::before { background: var(--flag); }
-  figcaption { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
-  figcaption p + p { margin-top: 6px; }
+  .hay-box { position: relative; }
+  .hay-box canvas { display: block; cursor: crosshair; touch-action: manipulation; }
+  .ring { position: absolute; pointer-events: none; border: 2px solid var(--ink); border-radius: 3px; box-shadow: 0 0 0 2px var(--page); }
+  .sweep { position: absolute; left: 36px; right: 0; top: 0; height: 0; border-top: 2px solid var(--ink); pointer-events: none; }
+  .sweep span { position: absolute; right: var(--g); top: 4px; padding: 2px 6px; border-radius: 4px; background: var(--ink); color: var(--page); font: 500 12px/1.4 var(--mono); }
   .tip { position: absolute; z-index: 5; pointer-events: none; background: var(--ink); color: var(--page); font: 13px/1.45 var(--mono); padding: 7px 9px; border-radius: 6px; max-width: 280px; white-space: pre-line; transform: translate(-50%, calc(-100% - 12px)); }
+  figcaption { margin-top: 14px; padding-right: var(--g); font-size: 14px; color: var(--ink-2); max-width: 80ch; }
 
-  /* why */
-  .three { display: grid; gap: 28px; margin-top: 36px; }
-  @media (min-width: 860px) { .three { grid-template-columns: repeat(3, 1fr); gap: 40px; } }
-  .three h3 { margin-bottom: 8px; }
-  .three p { color: var(--ink-2); }
+  /* proof: three numbers from the real-fraud test */
+  .proof .cells { display: grid; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; }
+  @media (min-width: 860px) { .proof .cells { grid-template-columns: repeat(3, 1fr); } }
+  .cell { padding: 24px 28px 26px; display: grid; gap: 6px; align-content: start; }
+  .cell + .cell { border-top: 1px solid var(--hairline); }
+  @media (min-width: 860px) { .cell + .cell { border-top: 0; border-left: 1px solid var(--hairline); } }
+  .figure { font: 650 clamp(2.75rem, 1.8rem + 3vw, 4.5rem)/1 var(--sans); font-stretch: 72%; letter-spacing: -.02em; }
+  .cell:first-child .figure { color: var(--model); }
+  .cell p:nth-child(2) { font-size: 17px; }
+  .source { font: 500 12.5px/1.4 var(--mono); color: var(--muted); }
 
-  /* walkthrough */
-  .steps { counter-reset: step; margin-top: 40px; }
-  .steps > li { counter-increment: step; display: grid; gap: 12px 40px; padding: 28px 0; border-top: 1px solid var(--hairline); }
-  @media (min-width: 900px) { .steps > li { grid-template-columns: 4fr 8fr; } }
-  .steps > li > div:first-child h3::before { content: counter(step); display: inline-grid; place-items: center; width: 28px; height: 28px; margin-right: 10px; border-radius: 50%; border: 1.5px solid var(--ink); font: 600 14px/1 var(--mono); vertical-align: 2px; }
-  .steps > li > div:first-child p { color: var(--ink-2); margin-top: 8px; font-size: 16px; }
-  .statement { font: 15px/1.6 var(--mono); background: var(--surface-2); border-radius: 8px; padding: 12px 14px; overflow-wrap: anywhere; }
-  .formula { font: 600 clamp(1.1rem, 1rem + .6vw, 1.5rem)/1.4 var(--mono); }
-
-  /* strips, bars, reasons (shared by the walkthrough and the case view) */
-  .strips li, .compare li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label val" "track track" "where where"; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--hairline); align-items: center; }
-  @media (min-width: 640px) { .strips li, .compare li { grid-template-columns: minmax(150px, 2fr) 3fr minmax(90px, auto) 80px; grid-template-areas: "label track val where"; } .compare li { grid-template-columns: minmax(150px, 2fr) 3fr minmax(150px, auto); grid-template-areas: "label track val"; } }
-  .label { grid-area: label; font-size: 15px; }
-  .val { grid-area: val; text-align: right; font: 500 14px/1.3 var(--mono); }
-  .where { grid-area: where; text-align: right; }
-  .track { grid-area: track; position: relative; height: 6px; border-radius: 3px; background: var(--surface-2); }
-  .track::before { content: ""; position: absolute; left: 25%; width: 50%; top: 0; bottom: 0; border-radius: 3px; background: var(--hairline); }
-  .dot { position: absolute; top: 50%; left: var(--p); width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--surface); }
-  .compare .rest { left: var(--b); background: var(--context); }
-  .compare .alert { left: var(--a); background: var(--flag); border-radius: 2px; transform: rotate(45deg); }
-  .bars li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label val" "track track"; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--hairline); }
-  @media (min-width: 640px) { .bars li { grid-template-columns: minmax(200px, 3fr) 3fr minmax(130px, auto); grid-template-areas: "label track val"; align-items: center; } }
-  .bars .track { background: none; height: 10px; }
-  .bars .track::before { display: none; }
-  .bar { display: block; height: 10px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--context); }
-  .bar.model { background: var(--model); }
-  .bars .label .small { display: block; }
-  .reasons li { padding: 6px 0 6px 22px; position: relative; }
-  .reasons li::before { content: ""; position: absolute; left: 2px; top: 14px; width: 8px; height: 8px; background: var(--flag); transform: rotate(45deg); }
-  .reasons li.weak { color: var(--muted); }
-  .reasons li.weak::before { background: none; border: 1.5px solid var(--muted); }
-  .note { margin-top: 12px; }
-
-  /* dashboard */
-  .workspace { margin-top: 32px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; }
-  .controls { display: grid; gap: 16px 24px; padding: 20px; border-bottom: 1px solid var(--hairline); }
-  @media (min-width: 900px) { .controls { grid-template-columns: minmax(240px, 1.2fr) auto 1.4fr; align-items: end; } }
-  .field { display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); }
-  .field output { color: var(--ink); font: 600 15px/1 var(--mono); }
-  .upload { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-  details.help { font-size: 14px; color: var(--ink-2); }
-  details.help summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
-  details.help p { margin-top: 6px; max-width: 52ch; }
-  #status { min-height: 0; padding: 0 20px; font-size: 15px; }
-  #status:not(:empty) { padding: 12px 20px; border-bottom: 1px solid var(--hairline); }
-  #status.error { color: var(--flag-ink); font-weight: 600; }
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin: 0; background: var(--hairline); border-bottom: 1px solid var(--hairline); }
-  @media (min-width: 900px) { .stats { grid-template-columns: repeat(4, 1fr); } }
-  .stats div { padding: 16px 20px; background: var(--surface); }
-  .stats dt { font-size: 14px; color: var(--ink-2); }
-  .stats dd { margin: 4px 0 0; font: 650 26px/1.15 var(--sans); font-stretch: 80%; overflow-wrap: anywhere; }
-  .stats dd.text { font-size: 18px; line-height: 1.3; }
-  .queue-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 20px 20px 8px; }
-  .table-wrap { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; font-size: 15px; }
-  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--hairline); vertical-align: top; }
-  th { font-size: 13px; font-weight: 600; color: var(--ink-2); }
-  th:first-child, td:first-child { padding-left: 20px; }
-  td .sub { display: block; margin-top: 2px; }
-  .linkish { all: unset; cursor: pointer; color: var(--link); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
-  .linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
-  .tag { display: inline-block; margin: 0 6px 6px 0; padding: 3px 7px; border-radius: 4px; border: 1px solid var(--hairline); font: 13px/1.35 var(--mono); background: var(--surface-2); }
-  .tag.weak { background: none; border-style: dashed; color: var(--muted); }
-  .queue-foot { padding: 12px 20px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
-  @media (max-width: 640px) { .hide-sm { display: none; } }
-  .panels { display: grid; border-top: 1px solid var(--hairline); }
-  @media (min-width: 960px) { .panels { grid-template-columns: 1fr 1fr; } .panels > div + div { border-left: 1px solid var(--hairline); } }
-  .panels > div { padding: 20px; min-width: 0; }
-  .panels > div + div { border-top: 1px solid var(--hairline); }
-  @media (min-width: 960px) { .panels > div + div { border-top: 0; } }
-  .chart-box { position: relative; height: 260px; margin-top: 12px; }
-  details.twin { margin-top: 10px; font-size: 14px; overflow-x: auto; }
-  details.twin summary { cursor: pointer; color: var(--ink-2); }
-  details.twin table { margin-top: 8px; font-size: 13px; }
-  details.twin td, details.twin th { padding: 4px 8px; }
-  .key { display: flex; gap: 16px; font-size: 13px; color: var(--ink-2); margin-top: 8px; }
-  .key span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 50%; background: var(--context); }
-  .key .a::before { background: var(--flag); border-radius: 2px; transform: rotate(45deg); }
-  .key .m::before { background: var(--model); border-radius: 2px; transform: rotate(45deg); }
-
-  /* results */
-  .result-block { margin-top: 48px; display: grid; gap: 24px 48px; }
-  @media (min-width: 960px) { .result-block { grid-template-columns: 5fr 7fr; } }
-  .result-block > div { min-width: 0; }
-  .takeaway { margin-top: 14px; font-weight: 600; }
-  .result-block .chart-box { height: 340px; }
-  .dumbbell li { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label val" "track track"; gap: 6px 12px; padding: 14px 0; border-bottom: 1px solid var(--hairline); }
-  @media (min-width: 640px) { .dumbbell li { grid-template-columns: 150px 1fr 170px; grid-template-areas: "label track val"; align-items: center; } }
-  .dumbbell .track { background: none; height: 14px; }
-  .dumbbell .track::before { left: 0; width: 100%; top: 6px; height: 2px; bottom: auto; background: var(--hairline); }
-  .dumbbell .link { position: absolute; top: 6px; height: 2px; background: var(--axis); left: min(var(--r), var(--m)); width: calc(max(var(--r), var(--m)) - min(var(--r), var(--m))); }
-  .dumbbell .dot { left: var(--r); background: var(--context); }
-  .dumbbell .dot.m { left: var(--m); background: var(--model); border-radius: 2px; transform: rotate(45deg); }
-  .scale { display: flex; justify-content: space-between; font: 12px/1 var(--mono); color: var(--muted); margin-top: 8px; }
-  @media (min-width: 640px) { .scale { margin-left: 162px; margin-right: 182px; } }
-  .metrics { margin-top: 16px; font-size: 14px; }
-  .metrics th, .metrics td { padding: 8px 10px; }
-  .metrics th { white-space: nowrap; }
-  @media (max-width: 639px) { .metrics { display: block; overflow-x: auto; } }
-  .metrics th:first-child, .metrics td:first-child { padding-left: 0; }
-  .metrics tr.used td { font-weight: 600; }
-  .callout { margin-top: 48px; padding: 20px 24px; border-radius: 12px; background: var(--surface); border: 1px solid var(--hairline); display: grid; gap: 8px 32px; }
-  @media (min-width: 860px) { .callout { grid-template-columns: auto 1fr; align-items: center; } }
-  .callout .figure { font: 650 clamp(2rem, 1.6rem + 1.4vw, 2.8rem)/1 var(--sans); font-stretch: 75%; }
-
-  /* data */
-  .cards { display: grid; gap: 16px; margin-top: 36px; }
-  @media (min-width: 860px) { .cards { grid-template-columns: repeat(2, 1fr); } }
-  .card { background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; scroll-margin-top: 72px; }
-  .card h3 { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
-  .badge { font: 600 12px/1 var(--mono); padding: 4px 6px; border-radius: 4px; border: 1px solid currentColor; color: var(--ink-2); }
-  .badge.real { color: var(--model); }
-  .card p { margin-top: 10px; color: var(--ink-2); font-size: 16px; }
-  .card .uses { font: 13px/1.5 var(--mono); color: var(--ink-2); }
-  .card:target { border-color: var(--accent); }
-  .findings { display: grid; gap: 32px; margin-top: 48px; }
-  @media (min-width: 900px) { .findings { grid-template-columns: 7fr 5fr; } }
-  .findings ul li { padding: 12px 0; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
-  .findings ul li strong { color: var(--ink); }
-
-  /* limits + footer */
-  .two { display: grid; gap: 32px; margin-top: 32px; }
-  @media (min-width: 860px) { .two { grid-template-columns: 1fr 1fr; gap: 56px; } }
-  .two ul li { padding: 10px 0; border-bottom: 1px solid var(--hairline); color: var(--ink-2); }
-  footer { border-top: 1px solid var(--hairline); padding: 32px 0 48px; font-size: 14px; color: var(--ink-2); }
-  footer .wrap { display: grid; gap: 12px; }
-  @media (min-width: 860px) { footer .wrap { grid-template-columns: 1fr 1fr; } }
-  footer p { max-width: none; }
-
-  /* case dialog: drawer on desktop, bottom sheet on phones */
-  dialog#case { border: 0; padding: 0; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); width: min(520px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0 0 0 auto; border-radius: 12px 0 0 12px; overscroll-behavior: contain; }
-  dialog#case::backdrop { background: rgba(12, 15, 20, .45); }
-  @media (max-width: 767px) { dialog#case { width: 100vw; height: 92dvh; margin: auto 0 0; border-radius: 12px 12px 0 0; } }
-  .case-head { position: sticky; top: 0; z-index: 1; display: flex; gap: 12px; justify-content: space-between; align-items: start; padding: 16px 20px; background: var(--surface); border-bottom: 1px solid var(--hairline); }
-  .case-head h2 { font-size: 1.5rem; overflow-wrap: anywhere; }
-  .stamp { display: inline-block; margin-top: 8px; padding: 4px 7px; border: 1.5px solid var(--flag-ink); border-radius: 4px; color: var(--flag-ink); font: 600 12px/1 var(--mono); letter-spacing: .1em; transform: rotate(-2deg); }
-  .case-body { padding: 16px 20px 28px; }
-  .case-body h3 { margin: 24px 0 6px; font-size: 1rem; }
-  .case-foot { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--hairline); font-size: 14px; color: var(--ink-2); }
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; } .btn:active { transform: none; } }
+  /* evidence */
+  .evidence { display: grid; gap: 24px 56px; padding-top: 80px; padding-bottom: 32px; scroll-margin-top: 64px; }
+  @media (min-width: 1024px) { .evidence { grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); align-items: start; } }
+  h2.big { font-stretch: 75%; font-weight: 650; font-size: clamp(1.75rem, 1.1rem + 2vw, 2.75rem); line-height: 1.05; }
+  .evidence p { margin-top: 14px; color: var(--ink-2); max-width: 46ch; }
+  .evidence p a { font-weight: 600; }
+  .evidence figure { margin: 0; min-width: 0; }
+  #ulb { height: 360px; }
+  @media (max-width: 639px) { #ulb { height: 300px; } }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding-top: 32px; padding-bottom: 80px; }
+  footer { border-top: 1px solid var(--hairline); padding: 28px 0 44px; font-size: 14px; color: var(--ink-2); }
+  footer .wrap { display: grid; gap: 10px; }
+  @media (min-width: 860px) { footer .wrap { grid-template-columns: 1fr 1fr; gap: 40px; } }
 </style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" integrity="sha512-Uyq/AgtqFM4vT+unIGTDr4wMJDTUK9O5w2PXMQeBCSR8koqHpVz+qBmcQ+9Oeo5H+EmvT4pp/5QrsqhIbyjHTQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script defer src="app.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav">
-  <nav class="wrap" aria-label="Sections">
-    <a class="brand" href="#top" aria-label="Anomaly detector, back to top"><span>Anomaly detector</span></a>
+  <nav class="wrap" aria-label="Main">
+    <a class="brand" href="./" aria-label="Anomaly detector home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>Anomaly detector</span></a>
     <ul>
-      <li><a href="#how">How it works</a></li>
-      <li><a href="#dashboard">Dashboard</a></li>
-      <li><a href="#results">Results</a></li>
-      <li class="wide"><a href="#data">Data</a></li>
+      <li><a href="#evidence">Evidence</a></li>
+      <li class="wide"><a href="dashboard.html#tab=model">Data</a></li>
       <li class="wide"><a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection">GitHub</a></li>
+      <li><a class="btn primary small" href="dashboard.html">Open the review desk</a></li>
     </ul>
   </nav>
 </header>
 
 <main id="main">
-  <section class="hero" id="top">
-    <div class="wrap">
-      <div>
-        <h1>Transaction anomaly detector</h1>
-        <p class="lede">Ranks payments by how unusual they are, explains every alert in plain words, and sizes the review queue to what a fraud team can actually check. Tested on real fraud labels and a real bank's ledger, and running live on Washington DC's public card spending.</p>
-        <p class="result" id="hero-result" aria-live="polite">
-          <span class="big" id="hero-recall">&nbsp;</span>
-          <span id="hero-text">of confirmed card fraud caught by reviewing just the top 1% of payments.</span>
-        </p>
-        <ul class="chips" aria-label="Data used">
-          <li><a class="chip" href="#data-ulb"><b>Real</b> fraud labels</a></li>
-          <li><a class="chip" href="#data-czech"><b>Real</b> bank ledger</a></li>
-          <li><a class="chip" href="#data-dc"><b>Real</b> government spending</a></li>
-          <li><a class="chip" href="#data-kaggle">Synthetic demo</a></li>
-        </ul>
-        <div class="actions">
-          <a class="btn primary" href="#dashboard">Open the dashboard</a>
-          <a href="#how">How it works</a>
-        </div>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <h1 id="hero-title">Find the fraud without reading every payment.</h1>
+      <p class="lede">Ranks every payment by how unusual it is, says why in plain words, and fills your team's review budget from the top. It never needs a fraud label.</p>
+      <div class="actions">
+        <a class="btn primary" href="dashboard.html">Open the review desk</a>
+        <a href="#evidence">How it was tested ↓</a>
       </div>
-      <figure class="haystack">
-        <div class="legend" aria-hidden="true"><span>one payment</span><span class="flagged">sent for review</span></div>
+      <article class="panel slip" aria-labelledby="slip-title">
+        <h2 class="folder" id="slip-folder">Case file</h2>
+        <div class="slip-top">
+          <div><h3 id="slip-title" aria-live="polite">Loading the payments…</h3><p class="small muted" id="slip-sub"></p></div>
+          <p class="slip-amount" id="slip-amount"></p>
+        </div>
+        <span class="stamp" id="slip-stamp" hidden></span>
+        <div id="slip-reasons"></div>
+        <div class="slip-nav">
+          <button class="btn small" id="slip-prev" type="button" aria-label="Previous case" disabled>‹</button>
+          <button class="btn small" id="slip-next" type="button" aria-label="Next case" disabled>›</button>
+          <a id="slip-open" href="dashboard.html">Open in the review desk →</a>
+        </div>
+        <p class="small muted" style="margin-top:10px">Unusual, not proven wrongdoing. A reviewer decides.</p>
+      </article>
+    </div>
+    <figure class="haystack">
+      <div class="legend" aria-hidden="true"><span>one DC card payment</span><span class="flagged">sent for review (top 2%)</span></div>
+      <div class="hay-box" id="hay-box">
         <canvas id="haystack" aria-hidden="true" height="1"></canvas>
+        <div class="ring" id="ring" hidden></div>
+        <div class="sweep" id="sweep" aria-hidden="true" hidden><span id="sweep-label"></span></div>
         <div class="tip" id="tip" hidden></div>
-        <figcaption>
-          <p id="haystack-caption">Each square is one recent Washington DC government card payment, oldest first. Red: the 2% a review team would check first.</p>
-          <p><strong>Unusual is not the same as wrong.</strong> Why DC? Banks can't publish their customers' payments. DC publishes every government card payment, with real merchants. Hover or tap a square for details.</p>
-        </figcaption>
-      </figure>
+      </div>
+      <figcaption id="hay-caption">Real Washington DC government card payments, oldest at the top.</figcaption>
+    </figure>
+  </section>
+
+  <section class="proof wrap" aria-label="Results on real card fraud">
+    <div class="cells">
+      <div class="cell"><p class="figure" id="p1">&nbsp;</p><p id="p1-label"></p><p class="source" id="p1-src"></p></div>
+      <div class="cell"><p class="figure" id="p2">&nbsp;</p><p id="p2-label"></p><p class="source" id="p2-src"></p></div>
+      <div class="cell"><p class="figure" id="p3">&nbsp;</p><p id="p3-label"></p><p class="source" id="p3-src"></p></div>
     </div>
   </section>
 
-  <section id="problem" aria-labelledby="problem-title">
-    <div class="wrap">
-      <h2 id="problem-title">Fraud is rare, labels come late, and reviewers are few</h2>
-      <div class="three">
-        <div>
-          <h3>No labels to learn from</h3>
-          <p>Most fraud is confirmed weeks later, if ever. So this model never sees a fraud label. It ranks payments by how unusual they are, and labels are only used afterwards to grade it.</p>
-        </div>
-        <div>
-          <h3>A fixed review budget</h3>
-          <p>A fraud team can check perhaps 1 to 2% of payments. Alerts fill that budget from the top, instead of using a probability cut-off that could flag far more than anyone can review.</p>
-        </div>
-        <div>
-          <h3>Bank data stays private</h3>
-          <p>Privacy law and the risk of re-identifying people keep customer transactions out of public hands. So this project uses the most real public sources there are, and says which is which.</p>
-        </div>
-      </div>
+  <section class="evidence wrap" id="evidence" aria-labelledby="ev-title">
+    <div>
+      <h2 class="big" id="ev-title">Tested on fraud it never saw.</h2>
+      <p id="ev-sub"></p>
+      <p><a href="dashboard.html#tab=model">All results, the planted-fraud test and the limits →</a></p>
     </div>
+    <figure>
+      <div id="ulb" class="chart"></div>
+      <details class="twin"><summary>Show as table</summary><div class="table-wrap"><table id="ulb-table"></table></div></details>
+    </figure>
   </section>
 
-  <section id="how" aria-labelledby="how-title">
-    <div class="wrap">
-      <h2 id="how-title">Follow one payment through the model</h2>
-      <p class="intro">The most unusual of the DC payments, step by step. The same view opens for any alert in the dashboard.</p>
-      <ol class="steps">
-        <li>
-          <div><h3>The payment</h3><p>Five columns arrive: date, agency, merchant, merchant category and amount. No cardholder is named, so each payment is compared with its agency and its category.</p></div>
-          <div id="step-row"></div>
-        </li>
-        <li>
-          <div><h3>Features put it in context</h3><p>Each feature is built so that higher means more unusual. The dot shows where this payment sits among all of them; the grey band is the middle half.</p></div>
-          <div id="step-features"></div>
-        </li>
-        <li>
-          <div><h3>Three detectors, three ideas of unusual</h3><p>Each detector scores every payment. Scores are in standard deviations above a typical payment, and #1 is the most unusual.</p></div>
-          <div id="step-detectors"></div>
-        </li>
-        <li>
-          <div><h3>Measure, then pick one</h3><p>Averaging the three sounds safer, so it was tested against each detector alone on real fraud labels. LOF breaks on data with many identical payments and drags the average down, so Isolation Forest, the simplest model that won every test, sets the order. KNN and LOF stay as second opinions.</p></div>
-          <div><p class="formula" id="step-choice"></p><p class="small muted note">Share of 492 real card frauds caught when reviewing the top 1% of payments.</p></div>
-        </li>
-        <li>
-          <div><h3>Capacity sets the queue</h3><p>The queue is sized to what the team can review, not to a probability threshold.</p></div>
-          <div><p id="step-capacity"></p></div>
-        </li>
-        <li>
-          <div><h3>A reason a person can check</h3><p>Reasons come from the features where the payment ranks highest. A flag is a reason to look, not a verdict.</p></div>
-          <div id="step-reasons"></div>
-        </li>
-      </ol>
-    </div>
-  </section>
-
-  <section id="dashboard" aria-labelledby="dash-title">
-    <div class="wrap">
-      <h2 id="dash-title">Dashboard: the review queue</h2>
-      <p class="intro">Pick a dataset or upload your own, then set how many payments your team can review. Open any alert to see why it was flagged.</p>
-      <div class="workspace">
-        <div class="controls">
-          <label class="field">Data
-            <select id="dataset">
-              <option value="dc">Washington DC government cards (real)</option>
-              <option value="czech">Czech bank ledger, 1990s (real)</option>
-              <option value="kaggle">Bank transactions demo (synthetic)</option>
-            </select>
-          </label>
-          <div class="field">
-            <span>Or your own file</span>
-            <div class="upload">
-              <label class="btn">Upload CSV<input id="file" type="file" accept=".csv,text/csv"></label>
-              <details class="help">
-                <summary>What can I upload?</summary>
-                <p>A bank statement exported as CSV (HDFC, SBI, ICICI and most banks: Date, Narration, Debit or Withdrawal, Balance), or a file with AccountID, TransactionAmount, TransactionDuration, LoginAttempts and AccountBalance. 30 to 10,000 rows, up to 4 MB. Scored in memory and never stored.</p>
-                <p><a download="statement_template.csv" href="data:text/csv;charset=utf-8,Date,Narration,Debit,Credit,Balance%0A">Statement template</a> · <a download="transactions_template.csv" href="data:text/csv;charset=utf-8,AccountID,TransactionAmount,TransactionDuration,LoginAttempts,AccountBalance%0A">Transactions template</a></p>
-              </details>
-            </div>
-          </div>
-          <label class="field" for="rate">Your team reviews <output id="rate-out" for="rate">2%</output>
-            <input id="rate" type="range" min="0.5" max="10" step="0.5" value="2">
-          </label>
-        </div>
-        <p id="status" role="status" aria-live="polite"></p>
-        <dl class="stats">
-          <div><dt id="kpi-n-label">payments scored</dt><dd id="kpi-n">–</dd></div>
-          <div><dt>sent for review</dt><dd id="kpi-k">–</dd></div>
-          <div><dt>money in the queue</dt><dd id="kpi-money">–</dd></div>
-          <div><dt>most common reason</dt><dd class="text" id="kpi-reason">–</dd></div>
-        </dl>
-        <div class="queue-head">
-          <h3>Most unusual first</h3>
-          <button class="btn" id="download" type="button">Download queue (CSV)</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <caption class="sr-only">Review queue, most unusual first. Each payment opens a case view.</caption>
-            <thead><tr><th scope="col" class="num">#</th><th scope="col" class="num hide-sm">Score</th><th scope="col">Payment</th><th scope="col" class="num">Amount</th><th scope="col">Why it stands out</th></tr></thead>
-            <tbody id="queue"></tbody>
-          </table>
-        </div>
-        <div class="queue-foot">
-          <p class="small muted">Score: standard deviations above a typical payment. "Top 1%": where it ranks on that feature. Dashed reasons are weak signals.</p>
-          <button class="btn" id="more" type="button" hidden>Show all</button>
-        </div>
-        <div class="panels">
-          <div>
-            <h3>Where the cut-off falls</h3>
-            <p class="small muted">How many payments got each score. Red bars sit above the cut-off and go to review. The height axis is logarithmic so the rare high scores stay visible.</p>
-            <div class="chart-box"><canvas id="histogram" role="img" aria-label="Histogram of anomaly scores with the review cut-off marked"></canvas></div>
-            <details class="twin"><summary>Show as table</summary><table id="histogram-table"></table></details>
-          </div>
-          <div>
-            <h3>Alerts vs everyone else</h3>
-            <p class="small muted">Median position of the alerts and of all other payments on each feature.</p>
-            <div class="key" aria-hidden="true"><span>others</span><span class="a">alerts</span></div>
-            <ul class="compare" id="compare"></ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="results" aria-labelledby="results-title">
-    <div class="wrap">
-      <h2 id="results-title">Does it work?</h2>
-      <p class="intro">Two tests. One on real fraud labels, which the detectors never see. One on planted frauds, which shows which kinds it catches and which it misses.</p>
-
-      <div class="result-block">
-        <div>
-          <h3>On real fraud: 284,807 card payments</h3>
-          <p class="intro" id="ulb-intro">Card payments made by European cardholders in September 2013, with fraud confirmed by the card company. The labels only grade the ranking.</p>
-          <p class="takeaway" id="ulb-takeaway"></p>
-          <table class="metrics" id="ulb-table"></table>
-        </div>
-        <div>
-          <div class="chart-box"><canvas id="ulb-chart" role="img" aria-label="Share of real frauds caught as the review capacity grows, for each method"></canvas></div>
-          <details class="twin"><summary>Show as table</summary><table id="ulb-curve-table"></table></details>
-        </div>
-      </div>
-
-      <div class="result-block">
-        <div>
-          <h3>On planted frauds, by kind</h3>
-          <p class="intro">The bank demo data has no labels, so 27 synthetic frauds of three kinds are planted into it and the test is run 20 times: account takeovers (4 to 5 logins, 3 to 6 times the amount), big-ticket buys (5 to 10 times the account's usual) and balance drains (90 to 100% of the money).</p>
-          <p class="takeaway" id="planted-takeaway"></p>
-        </div>
-        <div>
-          <p class="small muted">Share caught at a 2% review rate, mean of 20 runs.</p>
-          <div class="key" aria-hidden="true"><span>amount-only rule</span><span class="m">model (Isolation Forest)</span></div>
-          <ul class="dumbbell" id="dumbbell"></ul>
-          <div class="scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
-          <table class="metrics" id="planted-table"></table>
-        </div>
-      </div>
-
-      <div class="callout">
-        <p class="figure" id="capacity-figure">–</p>
-        <p id="capacity-text">Flagging every transaction with an outlier probability above 0.75 would send this many of the 2,512 to review. The top 2% is a queue a team can actually work through.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="data" aria-labelledby="data-title">
-    <div class="wrap">
-      <h2 id="data-title">The data, and why it looks like this</h2>
-      <p class="intro">Banks are bound by secrecy and data-protection law (India's DPDP Act 2023, the EU's GDPR, the US GLBA). Even anonymised payment trails can identify people from a few dates and shops, and fraud labels teach fraudsters what gets caught. So public data is either old and anonymised, deliberately obscured, published by governments about their own spending, or synthetic. This project uses one of each and labels them.</p>
-      <div class="cards">
-        <article class="card" id="data-ulb">
-          <h3>Credit-card fraud, ULB and Worldline <span class="badge real">real, labelled</span></h3>
-          <p><span data-k="ulb.rows">284,807</span> card payments by European cardholders over two days in September 2013, <span data-k="ulb.frauds">492</span> of them confirmed fraud. The card company replaced the original fields with 28 anonymous components for privacy, so this set grades the method and is not shown row by row. Downloaded from <a href="https://www.openml.org/d/1597">OpenML</a> when the site is built, never stored here. Open Database License; Dal Pozzolo et al. 2015.</p>
-          <p class="uses">Uses: amount + 28 components</p>
-        </article>
-        <article class="card" id="data-czech">
-          <h3>Czech bank ledger, PKDD'99 <span class="badge real">real bank, anonymised</span></h3>
-          <p>An anonymised ledger from a real Czech bank, released for the PKDD'99 Discovery Challenge (Berka): about a million transactions from 4,500 accounts, 1993 to 1998. The dashboard uses the full histories of <span data-k="notes.czech.accounts">40</span> random accounts (<span data-k="notes.czech.withdrawals"></span> withdrawals, in Czech crowns). The same recipe scores uploaded bank statements. Mirrored for research for over 20 years without an explicit licence; cited here, <a href="https://relational.fel.cvut.cz/dataset/Financial">source</a>.</p>
-          <p class="uses">Uses: withdrawal · share of money available · × account's usual · days since last withdrawal</p>
-        </article>
-        <article class="card" id="data-dc">
-          <h3>Washington DC government cards <span class="badge real">real, unlabelled</span></h3>
-          <p>DC publishes every payment made with a government purchase card. The dashboard uses the <span data-k="notes.dc.rows"></span> most recent (<span data-k="notes.dc.start"></span> to <span data-k="notes.dc.end"></span>): <span data-k="notes.dc.agencies"></span> agencies, <span data-k="notes.dc.vendors"></span> merchants. No cardholder is named. Refunds, dispute re-bills and an "Unknown New Agency" placeholder were removed. <a href="https://opendata.dc.gov/datasets/DCGIS::purchase-card-transactions">opendata.dc.gov</a>, CC BY 4.0.</p>
-          <p class="uses">Uses: amount · × agency's typical purchase · × typical for the category · how rare the category is for the agency</p>
-        </article>
-        <article class="card" id="data-kaggle">
-          <h3>Bank transactions demo <span class="badge">synthetic</span></h3>
-          <p><span data-k="notes.kaggle.rows"></span> generated bank transactions from <a href="https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection">Kaggle</a> (Vala Khorasani, Apache-2.0). It has the fields a bank would log, like login attempts and session length, which makes it a good teaching set, but it is not real and has no fraud labels. Used for the planted-fraud test and the original DataCamp project.</p>
-          <p class="uses">Uses: amount · session length · login attempts · amount ÷ balance left · × account's usual</p>
-        </article>
-      </div>
-      <div class="findings">
-        <div>
-          <h3>What the demo data could not tell us</h3>
-          <ul>
-            <li id="finding-hours"></li>
-            <li id="finding-prev"></li>
-            <li id="finding-device"></li>
-            <li><strong>So the model uses behavioural features only.</strong> Age and occupation describe the customer, not the payment, and are left out on purpose.</li>
-          </ul>
-        </div>
-        <div>
-          <h3>Your bank statement</h3>
-          <p class="intro">Export a statement as CSV from net banking and upload it in the dashboard. Withdrawals are compared with your own history: size, share of the balance, and gaps between payments. It is scored in memory and never stored or logged.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="limits" aria-labelledby="limits-title">
-    <div class="wrap">
-      <h2 id="limits-title">Limits and responsible use</h2>
-      <div class="two">
-        <div>
-          <h3>What the results do not show</h3>
-          <ul>
-            <li>The card data is from 2013 and hides its fields. It shows the ranking works on real fraud, not which fields mattered.</li>
-            <li>The DC and Czech data have no fraud labels. Their alerts are unusual payments, not proven wrongdoing.</li>
-            <li>Planted frauds encode our own idea of fraud, so that test measures "catches these patterns", not real-world recall.</li>
-            <li>Per-account baselines are noisy when an account has only a few payments.</li>
-          </ul>
-        </div>
-        <div>
-          <h3>How it should be used</h3>
-          <ul>
-            <li>A flag is a reason to look, never an automatic block.</li>
-            <li>No demographic features: age, occupation and wealth are never inputs.</li>
-            <li>Every alert carries a reason a person can check.</li>
-            <li>Uploads are scored in memory and never stored or logged.</li>
-            <li>The queue is sized to review capacity, because every false alarm costs a real customer time.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
+  <section class="cta wrap" aria-label="Try it">
+    <a class="btn primary" href="dashboard.html">Open the review desk</a>
+    <a class="btn" href="dashboard.html#upload">Upload a statement</a>
+    <p class="small muted">Statements are scored in memory and never stored.</p>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <p>Built by <a href="https://github.com/nightraven4545">nightraven4545</a>. Python, scikit-learn, FastAPI and Chart.js on Vercel; tests run on every push. <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection">Source</a> · <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection/blob/main/notebook.ipynb">Analysis notebook</a></p>
-    <p>Started from DataCamp's <em>Detecting Anomalous Transactions</em> project. Code under the MIT License. Data sources and licences are listed under <a href="#data">Data</a>.</p>
+    <p>Built by <a href="https://github.com/nightraven4545">nightraven4545</a>. Python, scikit-learn, FastAPI and Apache ECharts on Vercel; tests run on every push. <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection">Source</a> · <a href="https://github.com/nightraven4545/bank-transaction-anomaly-detection/blob/main/notebook.ipynb">Analysis notebook</a></p>
+    <p>Started from DataCamp's <em>Detecting Anomalous Transactions</em> project. Code under the MIT License. Data sources and licences are in the review desk's <a href="dashboard.html#tab=model">Model tab</a>.</p>
   </div>
 </footer>
 
-<dialog id="case" aria-labelledby="case-title">
-  <div class="case-head">
-    <div>
-      <h2 id="case-title"></h2>
-      <p class="small muted mono" id="case-meta"></p>
-      <span class="stamp" id="case-stamp">SENT FOR REVIEW</span>
-    </div>
-    <form method="dialog"><button class="btn" type="submit">Close</button></form>
-  </div>
-  <div class="case-body">
-    <div id="case-body"></div>
-    <p class="case-foot">Unusual, not proven wrongdoing. A reviewer decides.</p>
-  </div>
-</dialog>
+<script type="module">
+const GUTTER = 36; // room for the month labels left of the haystack
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+let ds = null, report = null, k = 0, hits = [], grid = null, sel = null, swept = false, lastWidth = 0;
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js" integrity="sha512-WoViKhKD4qI2WruSZqv9+kvM4WfFhUMQCLN4QlDTt5aU56fLQy2gYoxWIqlEnXqJy/+Ac5q/hk1oWfqnMDhwMA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script>
-const $ = (id) => document.getElementById(id);
-// Build DOM without innerHTML: uploaded values are untrusted and only ever reach the page as text.
-const el = (tag, props = {}, ...kids) => {
-  const node = Object.assign(document.createElement(tag), props);
-  node.append(...kids.filter((k) => k != null && k !== false));
-  return node;
-};
-const int = new Intl.NumberFormat("en-US");
-const pct = (x, digits = 0) => `${(x * 100).toFixed(digits)}%`;
-const times = (v) => `${v >= 10 ? Math.round(v) : v.toFixed(1)}×`;
-const median = (xs) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const money = (v, currency) => currency
-  ? new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 }).format(v)
-  : Number(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
-const date = (s) => new Date(`${s}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-
-const DATASETS = {
-  dc: { name: "Washington DC government cards", currency: "USD", noun: "payments" },
-  czech: { name: "Czech bank ledger", currency: "CZK", noun: "withdrawals" },
-  kaggle: { name: "Bank transactions demo", currency: "USD", noun: "transactions" },
-};
-const LABEL = {
-  TransactionAmount: "Amount", Debit: "Withdrawal",
-  amount_vs_agency_median: "× agency's typical purchase", amount_vs_category_median: "× typical for the category",
-  category_rarity_in_agency: "Rare category for the agency",
-  amount_to_balance: "Amount ÷ balance left", amount_vs_account_median: "× account's usual",
-  TransactionDuration: "Session length", LoginAttempts: "Login attempts",
-  share_of_balance: "Share of money available", days_since_prev: "Days since last withdrawal",
-};
-const DETECTORS = [
-  ["iforest", "Isolation Forest", "Easy to cut off from the rest with a few random splits. Sets the queue."],
-  ["knn", "KNN", "Far from its 5 nearest neighbours. Second opinion."],
-  ["lof", "LOF", "In a sparser spot than its neighbours. Second opinion."],
-];
-
-// pandas rank(pct=True) uses the average rank of ties; this matches it so the page agrees with the reason codes.
-function bisect(sorted, v, right) {
-  let lo = 0, hi = sorted.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid] < v || (right && sorted[mid] === v)) lo = mid + 1; else hi = mid; }
-  return lo;
+function proof(rep) {
+  const u = rep.ulb, i = u.rates.indexOf(0.01), model = u.recall[MODEL][i], rule = u.recall["amount rule"][i];
+  [
+    [pct(model), `of real card fraud caught by reviewing ${pct(u.rates[i])} of payments`, `${int.format(u.frauds)} frauds in ${int.format(u.rows)} payments · ULB/Worldline`],
+    [`1 in ${Math.round(1 / u.precision[MODEL][i])}`, "alerts is a confirmed fraud", `random checks: 1 in ${Math.round(1 / u.precision.random[i])}`],
+    [`${Math.round(model / rule)}×`, "more fraud than flagging the biggest payments", `amount-only rule: ${pct(rule)}`],
+  ].forEach(([figure, label, source], j) => {
+    $(`p${j + 1}`).textContent = figure;
+    $(`p${j + 1}-label`).textContent = label;
+    $(`p${j + 1}-src`).textContent = source;
+  });
+  $("ev-sub").textContent = `${int.format(u.rows)} real card payments, ${int.format(u.frauds)} confirmed frauds. The labels were used only to grade the ranking, never to train it.`;
+  const methods = [MODEL, "amount rule", "random"];
+  $("ulb-table").replaceChildren(
+    el("tr", {}, el("th", { textContent: "Reviewed" }), ...methods.map((m) => el("th", { className: "num", textContent: methodName(m) }))),
+    ...u.rates.map((r, j) => el("tr", {}, el("td", { textContent: pct(r, r < 0.01 ? 2 : 0) }), ...methods.map((m) => el("td", { className: "num", textContent: pct(u.recall[m][j]) })))));
+}
+function evidence() {
+  if (!report) return;
+  if (!window.echarts) { document.querySelector("details.twin").open = true; return; }
+  chart("ulb").setOption(ulbOption(report, [MODEL, "amount rule", "random"], { area: true, endLabel: innerWidth >= 480 }), { notMerge: true });
 }
 
-function prepare(body, meta) {
-  const rows = body.data.map((r) => Object.fromEntries(body.columns.map((c, j) => [c, r[j]])));
-  const ds = { ...meta, rows, features: body.features, amountKey: body.recipe === "ledger" ? "Debit" : "TransactionAmount" };
-  const n = rows.length;
-  for (const f of ds.features) {
-    const sorted = rows.map((r) => r[f]).sort((a, b) => a - b);
-    for (const r of rows) (r._pct ??= {})[f] = ((bisect(sorted, r[f], false) + 1 + bisect(sorted, r[f], true)) / 2 / n) * 100;
-  }
-  // The amount-only baseline a bank might start with: distance from the median amount, in MADs.
-  const amounts = rows.map((r) => r[ds.amountKey]), mid = median(amounts);
-  const mad = median(amounts.map((a) => Math.abs(a - mid))) || 1;
-  rows.forEach((r) => { r._rule = Math.abs(r[ds.amountKey] - mid) / mad; });
-  for (const k of ["iforest", "knn", "lof", "_rule"]) {
-    [...rows].sort((a, b) => b[k] - a[k]).forEach((r, i) => { (r._rank ??= {})[k] = i + 1; }); // stable: ties keep file order, like the API
-  }
-  ds.ranked = [...rows].sort((a, b) => a._rank.iforest - b._rank.iforest); // Isolation Forest sets the queue (see report.py)
-  return ds;
-}
-
-const parseReasons = (s) => (s || "").split(", ").map((x) => x.match(/^(\w+) p(\d+)$/)).filter(Boolean).map(([, f, p]) => ({ f, p: +p }));
-const title = (row) => row.Vendor ?? row.TransactionID ?? row.Narration ?? `Account ${row.AccountID}`;
-const sub = (row) => [row.Agency ?? (row.AccountID != null && row.AccountID !== "statement" ? `Account ${row.AccountID}` : null), row.Category, row.TransactionDate].filter(Boolean).join(" · ");
-
-function shownValue(f, row, ds) {
-  const v = row[f];
-  if (f === "TransactionAmount" || f === "Debit") return money(v, ds.currency);
-  if (f.startsWith("amount_")) return times(v);
-  if (f === "category_rarity_in_agency" || f === "share_of_balance") return pct(v);
-  if (f === "TransactionDuration") return `${v} s`;
-  if (f === "days_since_prev") return `${v} days`;
-  return String(v);
-}
-
-function sentence(f, row, ds) {
-  const v = row[f], amount = row[ds.amountKey], m = (x) => money(x, ds.currency);
-  const cat = (row.Category || "").toLowerCase(), above = Math.min(99, Math.floor(row._pct[f]));
-  switch (f) {
-    case "TransactionAmount": case "Debit": return `${m(v)}, larger than ${above}% of ${ds.noun}`;
-    case "amount_vs_agency_median": return `${times(v)} this agency's typical purchase (${m(amount / v)})`;
-    case "amount_vs_category_median": return `${times(v)} the typical ${cat} purchase (${m(amount / v)})`;
-    case "category_rarity_in_agency": return `Only ${pct(1 - v, 1)} of this agency's purchases are ${cat}`;
-    case "amount_to_balance": return `${times(v)} the balance left after paying`;
-    case "amount_vs_account_median": return `${times(v)} this account's usual amount (${m(amount / v)})`;
-    case "LoginAttempts": return `${v} login attempts before paying (most take 1)`;
-    case "TransactionDuration": return `${v}-second session, longer than ${above}% of sessions`;
-    case "share_of_balance": return v > 1 ? "More than the money available: the account went overdrawn" : `Took ${pct(v)} of the money available`;
-    case "days_since_prev": return `First withdrawal in ${v} days`;
-    default: return `${f}: ${v}`;
-  }
-}
-
-function statement(row, ds) {
-  const parts = [row.TransactionDate, row.TransactionID, row.Agency, row.Vendor, row.Category, row.Narration,
-    row.AccountID != null && row.AccountID !== "statement" && !row.Agency ? `account ${row.AccountID}` : null, row.Channel,
-    money(row[ds.amountKey], ds.currency)];
-  return el("p", { className: "statement", textContent: parts.filter(Boolean).join("  ·  ") });
-}
-
-function strips(row, ds) {
-  return el("ul", { className: "strips" }, ...ds.features.map((f) => {
-    const p = row._pct[f], track = el("span", { className: "track", ariaHidden: "true" }, el("span", { className: "dot" }));
-    track.style.setProperty("--p", `${p}%`);
-    return el("li", {},
-      el("span", { className: "label", textContent: LABEL[f] ?? f }),
-      track,
-      el("span", { className: "val", textContent: shownValue(f, row, ds) }),
-      el("span", { className: "where small muted", textContent: p >= 50 ? `top ${Math.max(1, Math.round(100 - p))}%` : `bottom ${Math.max(1, Math.round(p))}%` }));
-  }));
-}
-
-function detectors(row, ds) {
-  const top = Math.max(4, ...DETECTORS.map(([k]) => row[k]));
-  return el("div", {},
-    el("ul", { className: "bars" }, ...DETECTORS.map(([k, name, idea]) => {
-      const bar = el("span", { className: k === "iforest" ? "bar model" : "bar" });
-      bar.style.width = `${(Math.max(0, row[k]) / top) * 100}%`;
-      return el("li", {},
-        el("span", { className: "label" }, el("strong", { textContent: name }), el("span", { className: "small muted", textContent: idea })),
-        el("span", { className: "track", ariaHidden: "true" }, bar),
-        el("span", { className: "val", textContent: `${row[k].toFixed(1)} · #${int.format(row._rank[k])}` }));
-    })),
-    el("p", { className: "small muted note", textContent: `An amount-only rule would rank it #${int.format(row._rank._rule)} of ${int.format(ds.rows.length)}.` }));
-}
-
-const reasonList = (row, ds) => el("ul", { className: "reasons" }, ...parseReasons(row.reason).map(({ f, p }) =>
-  el("li", { className: p < 90 ? "weak" : "", textContent: sentence(f, row, ds) + (p < 90 ? " (weak signal)" : "") })));
-
-// ---- case dialog -------------------------------------------------------
-let opener = null;
-function openCase(row, ds, from) {
-  opener = from;
-  $("case-title").textContent = title(row);
-  $("case-meta").textContent = `#${int.format(row._rank.iforest)} of ${int.format(ds.rows.length)} · score ${row.iforest.toFixed(1)}`;
-  $("case-stamp").hidden = row._rank.iforest > queueSize(ds);
-  $("case-body").replaceChildren(statement(row, ds),
-    el("h3", { textContent: "Why it stands out" }), reasonList(row, ds),
-    el("h3", { textContent: "Where it sits" }), strips(row, ds),
-    el("h3", { textContent: "What each detector says" }), detectors(row, ds));
-  $("case").showModal();
-}
-$("case").addEventListener("close", () => opener?.focus());
-$("case").addEventListener("click", (e) => { if (e.target === $("case")) $("case").close(); }); // click on the backdrop
-
-// ---- hero haystack ------------------------------------------------------
-let heroDs = null;
-function haystack() {
-  const ds = heroDs, canvas = $("haystack");
-  if (!ds) return;
-  const n = ds.rows.length, k = Math.round(0.02 * n), width = canvas.parentElement.clientWidth, maxH = window.innerWidth < 640 ? 300 : 600;
+// ---- the haystack: every DC payment as a square, the review queue in red -------------------
+const cell = (i) => grid.ctx.fillRect(GUTTER + (i % grid.cols) * grid.pitch, Math.floor(i / grid.cols) * grid.pitch, grid.pitch - 1, grid.pitch - 1);
+function layout() {
+  const canvas = $("haystack"), n = ds.rows.length, width = $("hay-box").clientWidth - GUTTER;
+  const maxH = innerWidth < 640 ? 264 : Math.min(620, Math.max(360, innerHeight * 0.7));
   let pitch = 12;
   while (pitch > 3 && Math.ceil(n / Math.floor(width / pitch)) * pitch > maxH) pitch--;
-  const cols = Math.floor(width / pitch), rows = Math.ceil(n / cols), dpr = window.devicePixelRatio || 1;
-  canvas.width = cols * pitch * dpr; canvas.height = rows * pitch * dpr;
-  canvas.style.width = `${cols * pitch}px`; canvas.style.height = `${rows * pitch}px`;
+  const cols = Math.max(1, Math.floor(width / pitch)), rows = Math.ceil(n / cols), dpr = devicePixelRatio || 1;
+  canvas.width = (GUTTER + cols * pitch) * dpr;
+  canvas.height = rows * pitch * dpr;
+  canvas.style.width = `${GUTTER + cols * pitch}px`;
+  canvas.style.height = `${rows * pitch}px`;
   const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
-  for (const flagged of [false, true]) {
-    ctx.fillStyle = token(flagged ? "--flag" : "--cell");
-    ds.rows.forEach((r, i) => { if ((r._rank.iforest <= k) === flagged) ctx.fillRect((i % cols) * pitch, Math.floor(i / cols) * pitch, pitch - 1, pitch - 1); });
-  }
-  canvas.grid = { cols, pitch };
-  $("haystack-caption").textContent = `Each square is one of the ${int.format(n)} most recent Washington DC government card payments (${date(ds.rows[0].TransactionDate)} to ${date(ds.rows[n - 1].TransactionDate)}), oldest first. Red: the ${int.format(k)} most unusual, the 2% a review team would check first.`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  grid = { ctx, cols, rows, pitch };
+  ctx.fillStyle = token("--cell");
+  for (let i = 0; i < n; i++) cell(i);
+  // A month label where each month starts: DC is in date order, so the haystack doubles as a timeline.
+  ctx.fillStyle = token("--muted");
+  ctx.font = `500 11px ${token("--mono")}`;
+  ctx.textBaseline = "top";
+  let last = "";
+  ds.rows.forEach((r, i) => {
+    const month = r._day?.slice(0, 7);
+    if (month && month !== last) {
+      last = month;
+      ctx.fillText(new Date(`${month}-01T12:00:00`).toLocaleDateString("en-GB", { month: "short" }), 0, Math.floor(i / cols) * pitch);
+    }
+  });
 }
-function cellAt(event) {
-  const canvas = $("haystack"), box = canvas.getBoundingClientRect(), { cols, pitch } = canvas.grid || {};
-  if (!cols) return null;
-  const i = Math.floor((event.clientY - box.top) / pitch) * cols + Math.floor((event.clientX - box.left) / pitch);
-  return heroDs.rows[i] ? { row: heroDs.rows[i], x: event.clientX - box.left, y: event.clientY - box.top } : null;
+function paintAll() {
+  grid.ctx.fillStyle = token("--flag");
+  hits.forEach(cell);
+}
+function placeRing() {
+  if (!sel || !grid || !swept) return;
+  const ring = $("ring"), s = grid.pitch;
+  ring.hidden = false;
+  ring.style.width = ring.style.height = `${s + 5}px`;
+  ring.style.left = `${GUTTER + (sel._i % grid.cols) * s - 3}px`;
+  ring.style.top = `${Math.floor(sel._i / grid.cols) * s - 3}px`;
+}
+function redraw() {
+  swept = true;
+  $("sweep").hidden = true;
+  layout();
+  paintAll();
+  placeRing();
+}
+// One reading pass down the haystack: queue squares turn red as the line passes them.
+function sweep() {
+  const { cols, rows, pitch } = grid, total = rows * pitch;
+  let next = 0, start = null;
+  $("sweep").hidden = false;
+  const frame = (t) => {
+    if (swept) return; // stopped by a click, a key or a resize
+    start ??= t;
+    const p = Math.min(1, (t - start) / 1200), y = (0.5 - Math.cos(Math.PI * p) / 2) * total;
+    grid.ctx.fillStyle = token("--flag");
+    while (next < hits.length && Math.floor(hits[next] / cols) * pitch <= y) cell(hits[next++]);
+    $("sweep").style.transform = `translateY(${Math.min(y, total - 2)}px)`;
+    $("sweep-label").textContent = `reading ${date(ds.rows[Math.min(ds.rows.length - 1, Math.floor(y / pitch) * cols)]._day)}`;
+    if (p < 1) requestAnimationFrame(frame); else redraw();
+  };
+  requestAnimationFrame(frame);
+  setTimeout(() => { if (start == null) redraw(); }, 500); // no frames in a background tab: show the end state
+}
+function showCase(row) {
+  sel = row;
+  const inQueue = row._rank.iforest <= k;
+  $("slip-folder").textContent = `Case ${int.format(row._rank.iforest)} of ${int.format(ds.rows.length)}`;
+  $("slip-title").textContent = title(row);
+  $("slip-sub").textContent = sub(row);
+  $("slip-amount").textContent = money(row.TransactionAmount, "USD");
+  $("slip-stamp").hidden = false;
+  $("slip-stamp").className = inQueue ? "stamp" : "stamp out";
+  $("slip-stamp").textContent = inQueue ? "Sent for review" : "Not in queue";
+  $("slip-reasons").replaceChildren(reasonList(row, ds));
+  $("slip-open").href = `dashboard.html#ds=dc&case=${row._rank.iforest}`;
+  $("slip-prev").disabled = row._rank.iforest <= 1;
+  $("slip-next").disabled = row._rank.iforest >= ds.rows.length;
+  placeRing();
+}
+function cellAt(e) {
+  if (!grid) return null;
+  const box = $("haystack").getBoundingClientRect(), x = e.clientX - box.left, y = e.clientY - box.top;
+  const c = Math.floor((x - GUTTER) / grid.pitch), r = Math.floor(y / grid.pitch);
+  if (x < GUTTER || c >= grid.cols || r < 0) return null;
+  const row = ds.rows[r * grid.cols + c];
+  return row ? { row, x, y } : null;
 }
 $("haystack").addEventListener("pointermove", (e) => {
   const hit = cellAt(e), tip = $("tip");
   tip.hidden = !hit;
   if (!hit) return;
   tip.textContent = `${title(hit.row)}\n${hit.row.Agency}\n${money(hit.row.TransactionAmount, "USD")} · #${int.format(hit.row._rank.iforest)} most unusual`;
-  tip.style.left = `${Math.min(Math.max(hit.x, 120), $("haystack").clientWidth - 120)}px`;
-  tip.style.top = `${hit.y + 28}px`;
+  tip.style.left = `${Math.min(Math.max(hit.x, 140), $("hay-box").clientWidth - 140)}px`;
+  tip.style.top = `${hit.y}px`;
 });
 $("haystack").addEventListener("pointerleave", () => { $("tip").hidden = true; });
-$("haystack").addEventListener("click", (e) => { const hit = cellAt(e); if (hit) openCase(hit.row, heroDs, $("dataset")); });
-
-function walkthrough(ds) {
-  const row = ds.ranked[0], n = ds.rows.length, k = Math.round(0.02 * n), cut = ds.ranked[k - 1].iforest;
-  $("step-row").replaceChildren(statement(row, ds));
-  $("step-features").replaceChildren(strips(row, ds));
-  $("step-detectors").replaceChildren(detectors(row, ds));
-  $("step-capacity").textContent = `A team that reviews 2% checks the top ${int.format(k)} of ${int.format(n)} payments: everything scoring above ${cut.toFixed(2)}. This payment scores ${row.iforest.toFixed(2)}, the highest of all, so it is first in the queue.`;
-  $("step-reasons").replaceChildren(reasonList(row, ds));
-}
-
-// ---- dashboard ----------------------------------------------------------
-const cache = {};
-let current = null, showAll = false, histogramChart = null;
-const queueSize = (ds) => Math.max(1, Math.round((Number($("rate").value) / 100) * ds.rows.length));
-
-function say(message, isError = false) {
-  $("status").textContent = message;
-  $("status").classList.toggle("error", isError);
-}
-
-async function load(key) {
-  if (!cache[key]) {
-    const res = await fetch(`data/${key}.json`);
-    if (!res.ok) throw new Error(`Could not load the ${DATASETS[key].name} data (error ${res.status}). Reload the page to try again.`);
-    cache[key] = prepare(await res.json(), DATASETS[key]);
-  }
-  return cache[key];
-}
-
-function renderDashboard() {
-  const ds = current;
-  if (!ds) return;
-  const n = ds.rows.length, k = queueSize(ds), queue = ds.ranked.slice(0, k), rate = $("rate").value;
-  $("rate-out").textContent = `${rate}% = ${int.format(k)} ${ds.noun}`;
-  $("rate").setAttribute("aria-valuetext", `${rate} percent, ${k} ${ds.noun}`);
-  $("kpi-n-label").textContent = `${ds.noun} scored`;
-  $("kpi-n").textContent = int.format(n);
-  $("kpi-k").textContent = `${int.format(k)} (${rate}%)`;
-  $("kpi-money").textContent = money(queue.reduce((s, r) => s + r[ds.amountKey], 0), ds.currency);
-  const counts = {};
-  queue.forEach((r) => { const f = parseReasons(r.reason)[0]?.f; if (f) counts[f] = (counts[f] || 0) + 1; });
-  const [topReason, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || [];
-  $("kpi-reason").textContent = topReason ? `${LABEL[topReason] ?? topReason} (${pct(topCount / k)} of alerts)` : "–";
-
-  const limit = showAll ? k : Math.min(50, k);
-  $("queue").replaceChildren(...queue.slice(0, limit).map((row) => {
-    const open = el("button", { className: "linkish", type: "button", textContent: title(row) });
-    open.setAttribute("aria-label", `Open case ${row._rank.iforest}: ${title(row)}`);
-    open.addEventListener("click", () => openCase(row, ds, open));
-    return el("tr", {},
-      el("td", { className: "num mono", textContent: row._rank.iforest }),
-      el("td", { className: "num mono hide-sm", textContent: row.iforest.toFixed(1) }),
-      el("td", {}, open, el("span", { className: "sub small muted", textContent: sub(row) })),
-      el("td", { className: "num mono", textContent: money(row[ds.amountKey], ds.currency) }),
-      el("td", {}, ...parseReasons(row.reason).map(({ f, p }) =>
-        el("span", { className: p < 90 ? "tag weak" : "tag", textContent: `${LABEL[f] ?? f} · top ${Math.max(1, 100 - p)}%` }))));
-  }));
-  $("more").hidden = limit >= k;
-  $("more").textContent = `Show all ${int.format(k)}`;
-
-  $("compare").replaceChildren(...ds.features.map((f) => {
-    const a = median(queue.map((r) => r._pct[f])), b = median(ds.ranked.slice(k).map((r) => r._pct[f]) || [0]);
-    const track = el("span", { className: "track", ariaHidden: "true" }, el("span", { className: "dot rest" }), el("span", { className: "dot alert" }));
-    track.style.setProperty("--a", `${a}%`);
-    track.style.setProperty("--b", `${b ?? 50}%`);
-    return el("li", {}, el("span", { className: "label", textContent: LABEL[f] ?? f }), track,
-      el("span", { className: "val small", textContent: `alerts p${Math.round(a)} · others p${Math.round(b ?? 50)}` }));
-  }));
-  renderHistogram(ds, k);
-}
-
-// Draws the review cut-off as a vertical line on the histogram.
-const cutLine = {
-  id: "cutLine",
-  afterDatasetsDraw(chart, _args, o) {
-    if (o.cut == null) return;
-    const { ctx, chartArea: a } = chart, x = Math.min(a.right, a.left + ((o.cut - o.start) / o.step / o.bins) * (a.right - a.left));
-    ctx.save();
-    ctx.strokeStyle = ctx.fillStyle = o.color;
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
-    ctx.font = "12px 'IBM Plex Mono', monospace";
-    const right = x > a.right - 140;
-    ctx.textAlign = right ? "right" : "left";
-    ctx.fillText(`cut-off ${o.cut.toFixed(2)}`, x + (right ? -6 : 6), a.top + 12);
-    ctx.restore();
-  },
-};
-
-function axisStyle(title) {
-  return { title: { display: !!title, text: title, color: token("--ink-2") }, grid: { color: token("--hairline") }, border: { color: token("--axis") }, ticks: { color: token("--muted") } };
-}
-
-function renderHistogram(ds, k) {
-  const start = -1.5, step = 0.25, bins = 31; // -1.5 to 6, the last bin collects everything above 6
-  const counts = Array(bins).fill(0);
-  ds.rows.forEach((r) => { counts[Math.min(bins - 1, Math.max(0, Math.floor((r.iforest - start) / step)))]++; });
-  const cut = ds.ranked[k - 1].iforest;
-  const labels = counts.map((_, i) => (i === bins - 1 ? "6+" : (start + i * step).toFixed(2)));
-  $("histogram-table").replaceChildren(
-    el("tr", {}, el("th", { textContent: "Score from" }), el("th", { className: "num", textContent: "Payments" })),
-    ...counts.map((c, i) => el("tr", {}, el("td", { textContent: labels[i] }), el("td", { className: "num", textContent: int.format(c) }))));
-  if (!window.Chart) return;
-  histogramChart?.destroy();
-  histogramChart = new Chart($("histogram"), {
-    type: "bar",
-    data: { labels, datasets: [{ data: counts, backgroundColor: counts.map((_, i) => (start + i * step >= cut ? token("--flag") : token("--context"))), borderRadius: 2, categoryPercentage: 1, barPercentage: 0.9 }] },
-    options: {
-      animation: false, maintainAspectRatio: false,
-      scales: {
-        x: { ...axisStyle("score"), grid: { display: false }, ticks: { color: token("--muted"), maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
-        // Log scale: scores have a long tail, and the flagged bars would be invisible on a linear axis.
-        y: { ...axisStyle(`${ds.noun} (log scale)`), type: "logarithmic", min: 0.8, ticks: { color: token("--muted"), callback: (v) => ([1, 10, 100, 1000, 10000].includes(v) ? int.format(v) : "") } },
-      },
-      plugins: { legend: { display: false }, cutLine: { cut, start, step, bins, color: token("--ink") },
-        tooltip: { callbacks: { title: (items) => `Score ${items[0].label}${items[0].dataIndex < bins - 1 ? ` to ${(start + (items[0].dataIndex + 1) * step).toFixed(2)}` : ""}`, label: (item) => `${int.format(item.raw)} ${ds.noun}` } } },
-    },
-    plugins: [cutLine],
-  });
-}
-
-function download() {
-  if (!current) return;
-  const rows = current.ranked.slice(0, queueSize(current));
-  const keys = Object.keys(rows[0]).filter((key) => !key.startsWith("_"));
-  const cell = (value) => {
-    if (value == null) return "";
-    let s = String(value);
-    if (typeof value === "string" && /^[=+\-@]/.test(s)) s = "'" + s; // keep spreadsheets from running it as a formula
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const csv = [["rank", ...keys].join(","), ...rows.map((r) => [r._rank.iforest, ...keys.map((key) => cell(r[key]))].join(","))].join("\n");
-  const link = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: "review_queue.csv" });
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-$("dataset").addEventListener("change", async (e) => {
-  if (e.target.value === "upload") { current = cache.upload; showAll = false; return renderDashboard(); }
-  say("Loading…");
-  try { current = await load(e.target.value); showAll = false; say(""); renderDashboard(); }
-  catch (err) { say(err.message, true); }
-});
-$("rate").addEventListener("input", renderDashboard);
-$("more").addEventListener("click", () => { showAll = true; renderDashboard(); });
-$("download").addEventListener("click", download);
-$("file").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  e.target.value = ""; // allow re-uploading the same file
-  if (!file) return;
-  if (file.size > 4_000_000) return say("File too large: the limit is 4 MB. Export a shorter date range.", true);
-  const form = new FormData();
-  form.append("file", file);
-  say(`Scoring ${file.name}…`);
-  try {
-    const res = await fetch("/api/score", { method: "POST", body: form });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : `Upload failed (error ${res.status}).`);
-    const noun = body.recipe === "ledger" ? "withdrawals" : "transactions";
-    cache.upload = prepare(body, { name: file.name, currency: null, noun });
-    let option = $("dataset").querySelector('option[value="upload"]');
-    if (!option) { option = new Option("", "upload"); $("dataset").add(option); }
-    option.textContent = `Your file: ${file.name}`;
-    $("dataset").value = "upload";
-    current = cache.upload;
-    showAll = false;
-    renderDashboard();
-    say(`Scored ${int.format(current.rows.length)} ${noun} from ${file.name}. Nothing was stored.`);
-  } catch (err) {
-    say(err.message, true);
-  }
-});
-
-// ---- results (precomputed in report.py) -----------------------------------
-let ulbChart = null, report = null;
-const MODEL = "Isolation Forest";
-// [colour token, line width, point style, dash]. The model is the only coloured series; shapes tell the rest apart.
-const METHOD_STYLE = {
-  "Isolation Forest": ["--model", 3, "circle", []], ensemble: ["--context", 1.5, "triangle", []], KNN: ["--context", 1.5, "rect", []],
-  LOF: ["--context", 1.5, "rectRot", []], "amount rule": ["--context", 1.5, "crossRot", [6, 4]], random: ["--axis", 1.5, "line", [2, 4]],
-};
-const METHOD_NAME = {
-  "Isolation Forest": "Isolation Forest (used here)", ensemble: "average of all three",
-  "ensemble: mean of z-scores": "average of all three (z-scores)", "ensemble: mean of probabilities": "average of all three (probabilities)",
-  "amount only (robust z)": "amount-only rule",
-};
-const methodName = (m) => METHOD_NAME[m] ?? m;
-
-function renderResults(rep) {
-  const u = rep.ulb, i = u.rates.indexOf(0.01), i0 = u.rates.indexOf(0.001), recall = u.recall[MODEL][i], lift = recall / 0.01;
-  $("hero-recall").textContent = pct(recall);
-  $("hero-text").textContent = `of ${int.format(u.frauds)} confirmed frauds among ${int.format(u.rows)} real card payments, caught by reviewing just the top 1%. That is ${Math.round(lift)} times what random checks find, and the model never saw a label.`;
-  $("step-choice").textContent = ["Isolation Forest", "ensemble", "KNN", "LOF"].map((m) => `${m === "ensemble" ? "Average" : m} ${pct(u.recall[m][i])}`).join("  ·  ");
-
-  const methods = Object.keys(METHOD_STYLE);
-  const weak = ["KNN", "LOF"].filter((m) => u.roc_auc[m] < 0.7);
-  $("ulb-takeaway").textContent = `Reviewing the top 1%, Isolation Forest catches ${pct(recall)} of real frauds, and about 1 in ${Math.round(1 / u.precision[MODEL][i])} of its alerts is a confirmed fraud. Averaging all three detectors catches ${pct(u.recall.ensemble[i])}${weak.length
-    ? `, because ${weak.join(" and ")} is close to random on this data (ROC-AUC ${weak.map((m) => u.roc_auc[m].toFixed(2)).join(", ")})`
-    : ""}. With a very short queue (0.1%) the gap widens: ${pct(u.recall[MODEL][i0])} against ${pct(u.recall.ensemble[i0])}. An amount-only rule catches just ${pct(u.recall["amount rule"][i])}.`;
-  $("ulb-table").replaceChildren(
-    el("tr", {}, ...["Method", "ROC-AUC", "PR-AUC", "Caught at 1%", "Precision at 1%"].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
-    ...methods.map((m) => el("tr", { className: m === MODEL ? "used" : "" },
-      el("td", { textContent: methodName(m) }),
-      ...[u.roc_auc[m].toFixed(3), u.pr_auc[m].toFixed(3), pct(u.recall[m][i]), pct(u.precision[m][i], 1)].map((t) => el("td", { className: "num mono", textContent: t })))));
-  $("ulb-curve-table").replaceChildren(
-    el("tr", {}, el("th", { textContent: "Review capacity" }), ...methods.map((m) => el("th", { className: "num", textContent: methodName(m) }))),
-    ...u.rates.map((r, j) => el("tr", {}, el("td", { textContent: pct(r, r < 0.01 ? 2 : 0) }), ...methods.map((m) => el("td", { className: "num", textContent: pct(u.recall[m][j]) })))));
-  drawUlbChart();
-
-  const p = rep.planted, rule = p.by_type["amount only (robust z)"], model = p.by_type[MODEL], kinds = Object.keys(model);
-  $("dumbbell").replaceChildren(...kinds.map((kind) => {
-    const track = el("span", { className: "track", ariaHidden: "true" }, el("span", { className: "link" }), el("span", { className: "dot" }), el("span", { className: "dot m" }));
-    track.style.setProperty("--r", pct(rule[kind]));
-    track.style.setProperty("--m", pct(model[kind]));
-    return el("li", {}, el("span", { className: "label", textContent: kind }), track,
-      el("span", { className: "val small", textContent: `rule ${pct(rule[kind])} → model ${pct(model[kind])}` }));
-  }));
-  const wins = kinds.filter((kind) => model[kind] > rule[kind]), losses = kinds.filter((kind) => model[kind] < rule[kind]);
-  $("planted-takeaway").textContent = `The model wins on ${wins.join(" and ") || "no kind"}${losses.length ? ` but loses on ${losses.join(" and ")}, where a plain amount rule does better. So in practice, pair the model with one hard amount rule.` : "."}`;
-  $("planted-table").replaceChildren(
-    el("tr", {}, ...["Method", "ROC-AUC", "Avg precision", "Caught at 2%"].map((h, j) => el("th", { className: j ? "num" : "", textContent: h }))),
-    ...Object.entries(p.methods).map(([m, v]) => el("tr", { className: m === MODEL ? "used" : "" },
-      el("td", { textContent: methodName(m) }),
-      ...["ROC-AUC", "avg precision", "recall @2%"].map((key) => el("td", { className: "num mono", textContent: `${v[key][0].toFixed(3)} ± ${v[key][1].toFixed(3)}` })))));
-
-  const kg = rep.notes.kaggle;
-  $("capacity-figure").textContent = `${int.format(kg.prob_over_75)} vs ${int.format(kg.top_2pct)}`;
-  $("capacity-text").textContent = `Flagging every transaction with an outlier probability above 0.75 would send ${int.format(kg.prob_over_75)} of the ${int.format(kg.rows)} demo transactions to review. The top 2% is ${int.format(kg.top_2pct)}, a queue a team can actually work through.`;
-  $("finding-hours").replaceChildren(el("strong", { textContent: `Every transaction happens between ${kg.first_hour}:00 and ${kg.last_hour}:59.` }), " So time of day carries no signal.");
-  $("finding-prev").replaceChildren(el("strong", { textContent: `The "previous transaction" date is later than the transaction itself on ${pct(kg.prev_date_later)} of rows.` }), " So time since the last transaction can't be computed.");
-  $("finding-device").replaceChildren(el("strong", { textContent: `${pct(kg.new_device_every_time)} of repeat customers use a new device every time.` }), " So a device change can't separate fraud.");
-
-  document.querySelectorAll("[data-k]").forEach((node) => {
-    const v = node.dataset.k.split(".").reduce((o, key) => o?.[key], rep);
-    if (v != null) node.textContent = typeof v === "number" ? int.format(v) : /^\d{4}-\d\d-\d\d$/.test(v) ? date(v) : v;
-  });
-}
-
-function drawUlbChart() {
-  if (!window.Chart || !report) return;
-  const u = report.ulb;
-  ulbChart?.destroy();
-  ulbChart = new Chart($("ulb-chart"), {
-    type: "line",
-    data: { datasets: Object.entries(METHOD_STYLE).map(([m, [color, width, point, dash]]) => ({
-      label: methodName(m), data: u.rates.map((r, j) => ({ x: r * 100, y: u.recall[m][j] * 100 })),
-      borderColor: token(color), backgroundColor: token(color), borderWidth: width, borderDash: dash,
-      pointStyle: point, pointRadius: point === "line" ? 0 : m === MODEL ? 4 : 3.5, pointHoverRadius: 6, order: m === MODEL ? 0 : 1,
-    })) },
-    options: {
-      animation: false, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
-      scales: {
-        x: { ...axisStyle("review capacity (share of payments checked)"), type: "linear", min: 0, max: 5, ticks: { color: token("--muted"), callback: (v) => `${v}%` } },
-        y: { ...axisStyle("share of real frauds caught"), min: 0, max: 100, ticks: { color: token("--muted"), callback: (v) => `${v}%` } },
-      },
-      plugins: {
-        legend: { position: "top", align: "start", labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, color: token("--ink-2") } },
-        tooltip: { callbacks: { title: (items) => `Reviewing ${items[0].parsed.x}% of payments`, label: (item) => `${item.dataset.label}: ${item.parsed.y.toFixed(0)}% of frauds` } },
-      },
-    },
-  });
-}
-
-function redraw() {
-  haystack();
-  if (current) renderHistogram(current, queueSize(current));
-  drawUlbChart();
-}
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", redraw);
+$("haystack").addEventListener("contextrestored", () => { if (grid) redraw(); }); // Chrome can drop a hidden tab's canvas and hand it back blank
+$("haystack").addEventListener("click", (e) => { const hit = cellAt(e); if (!swept) redraw(); if (hit) showCase(hit.row); });
+// At either end the pressed button disables itself, so hand focus to the other one.
+$("slip-prev").addEventListener("click", () => { showCase(ds.ranked[sel._rank.iforest - 2]); if ($("slip-prev").disabled) $("slip-next").focus(); });
+$("slip-next").addEventListener("click", () => { showCase(ds.ranked[sel._rank.iforest]); if ($("slip-next").disabled) $("slip-prev").focus(); });
+addEventListener("keydown", () => { if (grid && !swept) redraw(); }, { once: true });
 let resizeTimer;
-new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(haystack, 100); }).observe($("haystack").parentElement);
+new ResizeObserver(() => {
+  const w = $("hay-box").clientWidth;
+  if (!grid || w === lastWidth) return; // the first call only reports the starting size
+  lastWidth = w;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(redraw, 100);
+}).observe($("hay-box"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (grid) redraw(); resetCharts(); evidence(); });
 
-(async () => {
-  fetch("data/report.json").then((res) => res.json()).then((rep) => { report = rep; renderResults(rep); })
-    .catch(() => { $("hero-recall").textContent = ""; $("hero-text").textContent = "Results could not be loaded. Reload the page to try again."; });
-  try {
-    heroDs = current = await load("dc");
-    haystack();
-    walkthrough(heroDs);
-    renderDashboard();
-  } catch (err) {
-    say(err.message, true);
-  }
-})();
+fetch("data/report.json")
+  .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+  .then((rep) => { report = rep; proof(rep); evidence(); })
+  .catch(() => { $("p1-label").textContent = "Results could not be loaded. Reload the page to try again."; });
+try {
+  ds = await load("dc");
+  k = Math.round(0.02 * ds.rows.length);
+  hits = ds.ranked.slice(0, k).map((r) => r._i).sort((a, b) => a - b);
+  $("hay-caption").textContent = `${int.format(ds.rows.length)} real Washington DC government card payments, ${date(ds.minDay)} to ${date(ds.maxDay)}, oldest at the top. The model sent ${int.format(k)} for review. Hover a square for details; click it to open the case.`;
+  await document.fonts?.ready;
+  lastWidth = $("hay-box").clientWidth;
+  layout();
+  showCase(ds.ranked[0]);
+  if (!reduce.matches && $("haystack").getBoundingClientRect().top < innerHeight) sweep(); else redraw();
+} catch (err) {
+  $("slip-title").textContent = err.message;
+}
 </script>
 </body>
 </html>
