@@ -12,21 +12,34 @@ It is tested on real data:
 - **A real Czech bank's ledger.**
 - **Washington DC's public government card spending**, scored live.
 
-![The site: a grid of 10,000 real DC government card payments with the 200 most unusual in red](images/app.png)
+![The landing page: 10,000 real DC government card payments as a grid, oldest at the top, with the 200 most unusual in red](images/app.png)
 
-Started from DataCamp's guided project [*Detecting Anomalous Transactions*](https://www.datacamp.com/projects/2755), then taken further: real data, a real-label evaluation, a measured model choice, reason codes and a public dashboard.
+Started from DataCamp's guided project [*Detecting Anomalous Transactions*](https://www.datacamp.com/projects/2755), then taken further: real data, a real-label evaluation, a measured model choice, reason codes and a review desk.
 
 ## What the site shows
-1. **A haystack:** each of 10,000 recent DC government card payments is a square. The 2% a review team would check first are red.
-2. **One payment, step by step:** the most unusual DC payment goes through the whole pipeline. It's a $10,000 restaurant bill from the Office of Finance & Resource Management, 47 times the typical restaurant purchase.
-3. **A dashboard:**
-   - Pick a dataset or upload your own CSV (including an Indian bank statement), and set the review capacity.
-   - Open any alert to see why it was flagged.
-   - Download the queue.
-4. **Results:** the real-label test, the planted-fraud test, and the evidence behind the model choice.
-5. **Data, limits and responsible use:** where every dataset comes from, what each result does and does not prove, and how the alerts should be used.
+**The landing page** opens on a haystack:
+- Each of 10,000 recent DC government card payments is a square, oldest at the top.
+- The 2% a review team would check first are red.
+- Click any square to read its case.
+- Three numbers and one chart from the real-fraud test follow.
 
-![Follow one payment through the model](images/walkthrough.png)
+**The review desk** (`/dashboard.html`) is a full-width app with three tabs:
+- **Queue:**
+  - The alert queue is sized by a "your team reviews" slider. Next to it, a case panel explains each alert.
+  - Mark each case "looks fine" (F) or "escalate" (E), and move with J and K. Marks stay in your browser and go into the CSV export.
+  - A timeline of payments and alerts sits on top. Drag its handles to filter everything.
+- **Patterns:** alerts by day, alert rate by agency and by category, and amount against anomaly score ("are alerts just big payments?"). Click any bar or cell to filter.
+- **Model:**
+  - the real-label and planted-fraud results
+  - a review-cost calculator that finds the queue size that pays for itself
+  - the six steps from payment to case
+  - the data sources and the limits
+
+Pick a dataset (DC cards, Czech bank or synthetic), or upload your own CSV, including an Indian bank statement.
+
+![The review desk: KPI tiles, a timeline of payments and alerts, and the queue next to a case panel](images/dashboard.png)
+
+![The Patterns tab: alerts by day as a calendar, and amount against anomaly score](images/patterns.png)
 
 ## Results
 
@@ -64,7 +77,7 @@ Share of each kind caught at 2%, Isolation Forest against the amount-only rule:
 | big-ticket purchases | 70% | 34% |
 | balance drains | 82% | 97% |
 
-![Results section of the site](images/results.png)
+![The Model tab: frauds caught as the review queue grows, and the review-cost calculator](images/results.png)
 
 ### Key findings
 - **Measure before you ensemble.** Averaging three detectors sounds safer, so it was the original design. The measurements say otherwise.
@@ -77,11 +90,11 @@ Share of each kind caught at 2%, Isolation Forest against the amount-only rule:
 ## Data
 | dataset | real? | labels | used for | licence |
 |---|---|---|---|---|
-| [Washington DC purchase-card transactions](https://opendata.dc.gov/datasets/DCGIS::purchase-card-transactions), newest 10,000 (8 Apr to 31 Jul 2026), `data/dc_pcard.csv` | real | none | hero, walkthrough, dashboard | CC BY 4.0, District of Columbia (Office of Contracting and Procurement) |
-| [PKDD'99 Czech bank ledger (Berka)](https://relational.fel.cvut.cz/dataset/Financial), full histories of 40 random accounts, `data/czech_bank_sample.csv` | real, anonymised | none | dashboard | no explicit licence; released for the PKDD'99 Discovery Challenge and mirrored for research since. Cited, sample only. |
+| [Washington DC purchase-card transactions](https://opendata.dc.gov/datasets/DCGIS::purchase-card-transactions), newest 10,000 (8 Apr to 31 Jul 2026), `data/dc_pcard.csv` | real | none | landing page, review desk | CC BY 4.0, District of Columbia (Office of Contracting and Procurement) |
+| [PKDD'99 Czech bank ledger (Berka)](https://relational.fel.cvut.cz/dataset/Financial), full histories of 40 random accounts, `data/czech_bank_sample.csv` | real, anonymised | none | review desk | no explicit licence; released for the PKDD'99 Discovery Challenge and mirrored for research since. Cited, sample only. |
 | [ULB / Worldline credit-card fraud](https://www.openml.org/d/1597) | real, anonymised (PCA) | 492 frauds | results | ODbL / DbCL. Downloaded at build time, never committed. Dal Pozzolo et al., 2015 |
 | [Bank Transaction Dataset for Fraud Detection](https://www.kaggle.com/datasets/valakhorasani/bank-transaction-dataset-for-fraud-detection) (Vala Khorasani), `data/bank_transactions_data_2.csv` | synthetic | none | planted-fraud test, the original DataCamp project | [Apache-2.0](data/LICENSE) |
-| your own CSV, uploaded on the site | yours | none | dashboard | scored in memory, never stored |
+| your own CSV, uploaded on the site | yours | none | review desk | scored in memory, never stored |
 
 **Why there's no "real bank fraud" dataset here:**
 - Banks are bound by secrecy and data-protection law: India's DPDP Act 2023, the EU's GDPR and the US GLBA.
@@ -118,7 +131,7 @@ Then:
 
 The FastAPI app (`app.py`) only scores uploads.
 
-![Dashboard](images/dashboard.png)
+The front end has no build step. It is plain HTML and JavaScript with [Apache ECharts](https://echarts.apache.org) from a CDN. Each chart has a "Show as table" view. Uploaded values only reach the page as text, including inside chart tooltips.
 
 ## Upload your own data
 `POST /api/score` with a CSV (30 to 10,000 rows, at most 4 MB) accepts either format:
@@ -151,8 +164,11 @@ jupyter lab notebook.ipynb         # the analysis
 
 ## Project structure
 ```
-├── static/index.html   the site: story, walkthrough, dashboard, results, data (no build step)
-├── static/data/        scored datasets + report.json, generated by report.py
+├── static/index.html      landing page (no build step)
+├── static/dashboard.html  the review desk: queue, patterns, model
+├── static/app.js          helpers and chart setup shared by both pages
+├── static/style.css       shared styles
+├── static/data/           scored datasets + report.json, generated by report.py
 ├── app.py              FastAPI: upload scoring (bank schema or bank statement), serves the site
 ├── detect.py           feature recipes, detectors, alerting, reason codes
 ├── report.py           fetches data, scores it, runs the real-label and planted-fraud evaluations
@@ -170,9 +186,11 @@ jupyter lab notebook.ipynb         # the analysis
 - Per-account baselines are noisy when an account has few payments.
 
 ## Next steps
-- Record reviewers' verdicts on alerts as labels, then train a supervised model on them.
-- A time-series view (daily volumes, seasonal baselines) for the ledger data.
-- SHAP-based explanations next to the percentile reason codes.
+- Run the model and one hard amount rule as a single queue, and measure it. The planted test shows they catch different fraud.
+- Turn the verdicts exported from the review desk into labels, then train a supervised model on them.
+- Add confidence intervals to recall at each review rate and to the alert rates by group.
+- Refresh the DC data on a schedule, and stamp the page with "data as of".
+- Add SHAP-style explanations next to the percentile reason codes.
 
 ## Credits
 - Project idea: DataCamp, *Detecting Anomalous Transactions* (Mike Preble), and the *Anomaly Detection in Python* course.
